@@ -1,0 +1,1 @@
+frida -U --no-pause -f 'com.packagename' -l code_basic.js
