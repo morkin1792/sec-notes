@@ -141,6 +141,10 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
     * secret|key|password|aws
     * [a-zA-Z]{3,15}:\/\/[^\/\\:@]+:[^\/\\:@]+@.{1,100}
 
+## flutter
+- https://blog.nviso.eu/2019/08/13/intercepting-traffic-from-android-flutter-applications/
+- https://raphaeldenipotti.medium.com/bypassing-ssl-pinning-on-android-flutter-apps-with-ghidra-77b6e86b9476
+
 ## firebase
 - acessar *.firebaseio.com/.json
     https://pentestguy.in/pentesting-insecure-firebase-bugbounty-penetration-testing/
