@@ -7,23 +7,7 @@
 - identificar tecnologia utilizada pela aplicacao
     - tentar forcar mensagens de erro
     - analisar headers e nomes de arquivos
-- scan automatizado
-    - nikto, ?wapiti, wpscan, burp
-    - ?nuclei
-    - ?oneforall
-    - ?rengine
-    - procurar cves afetando a aplicacao 
-      - busca manual por versao encontrada
-      - nessus
-      - shodan, censys
-      - CVE to MS bulletin https://docs.microsoft.com/en-us/search/?terms=CVE-2XXX-XXX
-      - procurar exploits (exploitdb, github, securityfocus, google)
-- se a app eh bruteforcable, reunir e-mails
-    - procurar em buscadores "@empresa"
-    - procurar emails dos funcionarios (aplicacao, linkedin)
-        - site:linkedin.com employees site.com.br
-    - theHarvester
-    - identificar senhas em breach databases
+    - 
 - procurar sobre a aplicação
     - em buscadores
         - site:site.com.br intitle:index.of|phpinfo
@@ -40,23 +24,43 @@
     - web.archive.org
         - navegar por versoes anteriores
         - curl 'https://web.archive.org/cdx/search?url=site.com.br&matchType=domain&fl=original&collapse=original&output=text&limit=100000' | sort -u
-- criar wordlist (seclists)
-- fuzzing no path da aplicacao
-    - buscar subpaths no sitemap do burp
+- scan automatizado
+    - nikto, ?wapiti, wpscan, burp
+    - ?nuclei
+    - ?oneforall
+    - ?rengine
+    - procurar cves afetando a aplicacao 
+      - busca manual por versao encontrada
+      - nessus
+      - nmap scripts
+      - shodan, censys
+      - CVE to MS bulletin https://docs.microsoft.com/en-us/search/?terms=CVE-2XXX-XXX
+      - procurar exploits (exploitdb, github, securityfocus, google)
+- se a app eh bruteforcable, reunir e-mails
+    - procurar em buscadores "@empresa"
+    - procurar emails dos funcionarios (aplicacao, linkedin)
+        - site:linkedin.com employees site.com.br
+    - theHarvester
+    - identificar senhas em breach databases
+- criar wordlist
+    - seclists
+    - bopscrk
+- fuzzing na aplicacao
+    - buscar paths no sitemap do burp
     - fuzzing com token de sessao
+    - lanjelot/patator, wfuzz
 - manual tests
     - submit blind xss payloads
     - XSStrike
-    - procurar 
-    - pedir reset de senha com header Host fake
-    - tentar alterar a senha sem a atual
 
+## reset senha
+- pedir reset de senha alterando header Host
+- tentar alterar a senha sem a atual
 
 ## code review
 - insider
 - spotbugs
 - graudit
-
 
 ## http techniques
 - /param[]
