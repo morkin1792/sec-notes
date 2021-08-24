@@ -138,6 +138,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
     - export AWS_SECRET_ACCESS_KEY=
     - export AWS_SESSION_TOKEN=
     - aws iam get-user
+    - aws s3 ls s3://bucket --no-sign-request
 
 ## mobile
 - mobsf static analysis
