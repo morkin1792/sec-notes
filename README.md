@@ -143,9 +143,10 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 ## mobile
 - mobsf static analysis
-- Buscar por chaves no app, regex:
-    * secret|key|password|aws
+- Buscar por chaves, urls:
+    * secret|apikey|password|amazonaws|appspot|firebaseio
     * [a-zA-Z]{3,15}:\/\/[^\/\\:@]+:[^\/\\:@]+@.{1,100}
+    * [a-zA-Z]{3,11}:\/\/[^"' ]{1,100} 
 
 ## flutter
 - https://blog.nviso.eu/2019/08/13/intercepting-traffic-from-android-flutter-applications/
