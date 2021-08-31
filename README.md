@@ -148,6 +148,9 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
     * [a-zA-Z]{3,15}:\/\/[^\/\\:@]+:[^\/\\:@]+@.{1,100}
     * [a-zA-Z]{3,11}:\/\/[^"' ]{1,100} 
 
+## ios
+- TODO: https://cobalt.io/blog/ios-pentesting-101
+
 ## flutter
 - https://blog.nviso.eu/2019/08/13/intercepting-traffic-from-android-flutter-applications/
 - https://raphaeldenipotti.medium.com/bypassing-ssl-pinning-on-android-flutter-apps-with-ghidra-77b6e86b9476
