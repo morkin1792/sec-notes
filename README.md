@@ -54,9 +54,13 @@
     - XSStrike
 
 ## reset senha
-- adicionar parametro de email/telefone
+- mass assignment email/telefone
 - pedir reset de senha alterando header Host
 - tentar alterar a senha sem a atual
+
+## registro
+- mass assignment admin
+- usar identificadores jah cadastrados
 
 ## code review
 - insider
