@@ -62,6 +62,9 @@
 - mass assignment admin
 - usar identificadores jah cadastrados
 
+## editar dados
+- trocar para email/telefone/cpf jah cadastrado
+
 ## code review
 - insider
 - spotbugs
