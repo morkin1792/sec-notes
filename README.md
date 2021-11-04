@@ -136,6 +136,7 @@ https://paulmuellersec.files.wordpress.com/2021/06/asp.netcryptocheatsheet.pdf
 http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 ```
 ## ssrf
+- https://gist.github.com/jhaddix/78cece26c91c6263653f31ba453e273b
 - se for aws
     - http://169.254.169.254/latest/meta-data
     - http://169.254.169.254/latest/meta-data/identity-credentials/ec2/security-credentials/ec2-instance
