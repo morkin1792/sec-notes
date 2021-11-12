@@ -152,7 +152,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 ## mobile
 - mobsf static analysis
 - Buscar por chaves, urls:
-    * secret|apikey|password|amazonaws|appspot|firebaseio
+    * access.?key|api.?key|api.?secret|client.?password|client.?secret|client.?session|client.?token|private.?key|private.?token|secret.?access|secret.?key|secret.?token|session.?token|amazonaws|appspot|firebaseio|senha|password
     * [a-zA-Z]{3,15}:\/\/[^\/\\:@]+:[^\/\\:@]+@.{1,100}
     * [a-zA-Z]{3,11}:\/\/[^"' ]{1,100} 
 
