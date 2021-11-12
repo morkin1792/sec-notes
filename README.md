@@ -151,11 +151,11 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 ## mobile
 - mobsf static analysis
-- Buscar por chaves, urls:
-    * access.?key|api.?key|api.?secret|client.?password|client.?secret|client.?session|client.?token|private.?key|private.?token|secret.?access|secret.?key|secret.?token|session.?token|amazonaws|appspot|firebaseio|senha|password
-    * [a-zA-Z]{3,15}:\/\/[^\/\\:@]+:[^\/\\:@]+@.{1,100}
-    * [a-zA-Z]{3,11}:\/\/[^"' ]{1,100} 
-
+- Busca por chaves, hardcoded:
+    * access.?key|access.?token|api.?key|api.?secret|client.?password|client.?secret|client.?session|client.?token|private.?key|private.?token|secret.?access|secret.?key|secret.?token|session.?token|amazonaws|appspot|firebaseio|senha|password
+    * \w{3,36}:\w+@(\w+[.])+\w+
+    * https://github.com/m4ll0k/SecretFinder
+    * https://github.com/i5nipe/nipejs
 ## ios
 - TODO: https://cobalt.io/blog/ios-pentesting-101
 
