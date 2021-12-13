@@ -154,6 +154,8 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 - Busca por chaves, hardcoded:
     * access.?key|access.?token|api.?key|api.?secret|client.?password|client.?secret|client.?session|client.?token|private.?key|private.?token|secret.?access|secret.?key|secret.?token|session.?token|amazonaws|appspot|firebaseio|senha|password
     * \w{3,36}:\w+@(\w+[.])+\w+
+    * [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+    * <pre> grep --color=yes -A5 -B5 -Einf patterns.regex index.android.js </pre>
     * https://github.com/m4ll0k/SecretFinder
     * https://github.com/i5nipe/nipejs
 ## ios
