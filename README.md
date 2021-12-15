@@ -54,9 +54,13 @@
     - XSStrike
 
 ## reset senha
-- mass assignment email/telefone
-- pedir reset de senha alterando header Host
+- mass assignment email/telefone in all password change
+- pedir reset de senha alterando header
+    - change Host
+    - duplicate Host
+    - added X-Forwarded-Host
 - tentar alterar a senha sem a atual
+- https://n3t-hunt3r.gitbook.io/pentest-book/web-application-pentesting/reset-forgotten-password-bypass
 
 ## registro
 - mass assignment admin
