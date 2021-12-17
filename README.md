@@ -69,6 +69,10 @@
 ## editar dados
 - trocar para email/telefone/cpf jah cadastrado
 
+## cartao
+- verificacao dono cartao
+- brute cvv
+
 ## code review
 - insider
 - spotbugs
