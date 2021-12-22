@@ -1,3 +1,5 @@
+[UNDER CONSTRUCTION]
+
 ## task list
 - procurar subdominios
     - recon-ng + seclists, subfinder
