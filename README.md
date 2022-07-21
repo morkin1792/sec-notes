@@ -120,7 +120,7 @@
 - /auth/realms/{REALM_NAME}/account -> interface admin do realm do keycloak
 - /auth/realms/{REALM_Name}/.well-known/openid-configuration
 - /auth/realms/{REALM_Name}/protocol/openid-connect/certs
-- /auth/realms/{REALM_Name}/protocol/openid-connect/logout?redirect_uri=www.tempest.com.br
+- /auth/realms/{REALM_Name}/protocol/openid-connect/logout?redirect_uri=
 
 
 ## java (?apenas tomcat e jetty?)
