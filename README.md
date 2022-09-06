@@ -9,7 +9,7 @@
 - identificar tecnologia utilizada pela aplicacao
     - tentar forcar mensagens de erro
     - analisar headers e nomes de arquivos
-    - 
+    - utilizar tools (wappalyzer)
 - procurar sobre a aplicação
     - em buscadores
         - site:site.com.br intitle:index.of|phpinfo
@@ -27,8 +27,9 @@
         - navegar por versoes anteriores
         - curl 'https://web.archive.org/cdx/search?url=site.com.br&matchType=domain&fl=original&collapse=original&output=text&limit=100000' | sort -u
 - scan automatizado
-    - nikto, ?wapiti, wpscan, burp
-    - ?nuclei
+    - nuclei, burp
+    - wpscan
+    - ~nikto, wapiti~
     - ?oneforall
     - ?rengine
     - procurar cves afetando a aplicacao 
@@ -43,7 +44,8 @@
     - procurar emails dos funcionarios (aplicacao, linkedin)
         - site:linkedin.com employees site.com.br
     - theHarvester
-    - identificar senhas em breach databases
+    - identificar senhas em breach databases 
+    - se encontrar hash -> hashcat para identificar e quebrar
 - criar wordlist
     - seclists
     - bopscrk
