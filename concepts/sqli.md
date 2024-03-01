@@ -1,5 +1,4 @@
 # SQLi
-owasp, https://sqlwiki.netspi.com/
 
 ## passo-a-passo
 
