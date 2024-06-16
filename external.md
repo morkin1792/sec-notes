@@ -23,8 +23,6 @@
 
 ### Information Gathering - Step 2
 
-- ?shmilylty/OneForAll
-
 - get initial domains:
     * search engine + links in main websites
     * search registrant: 
@@ -93,6 +91,7 @@
 
 ### scanning
 - subdomain takeover
+    - dnsreaper
     - [subdomains.sh](subdomains.sh)
     - look for:
         * amazonaws.com
