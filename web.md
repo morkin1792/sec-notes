@@ -157,16 +157,6 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
     * https://github.com/trufflesecurity/trufflehog
 
 
-### aws
-- export AWS_ACCESS_KEY_ID=
-- export AWS_SECRET_ACCESS_KEY=
-- export AWS_SESSION_TOKEN=
-- aws iam get-user
-- aws s3 sync s3://bucket bucketfiles --no-sign-request
-- aws s3 ls s3://bucket --recursive --no-sign-request 
-- https://stackoverflow.com/questions/21951372/aws-s3-listbucketresult-pagination-without-authentication
-
-
 ### keycloak
 - REALM_NAME='master' -> check too the original realm_name from app
 - /auth/realms/{REALM_NAME} -> pubkey to try downgrade attack
@@ -224,12 +214,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 ```
 
 ### SSRF
-- cloud metadata service address
-    - https://gist.github.com/jhaddix/78cece26c91c6263653f31ba453e273b
-    - http://169.254.169.254/latest/meta-data
-    - http://169.254.169.254/latest/meta-data/identity-credentials/ec2/security-credentials/ec2-instance
-    - http://169.254.169.254/latest/meta-data/iam/security-credentials/
-    - RhinoSecurityLabs/pacu
+- [cloud metadata service address](cloud.md)
 - ntlm relay && brute ntlm response
 - brute hosts (leaked internal ips)
 - path fuzzing
