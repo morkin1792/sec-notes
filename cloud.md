@@ -1,6 +1,6 @@
 # cloud
 - Cloud Metadata: https://gist.github.com/jhaddix/78cece26c91c6263653f31ba453e273b
-- Frameworks: RhinoSecurityLabs/pacu
+- Tools: RhinoSecurityLabs/pacu
 
 ## gcp
 - `gcloud auth activate-service-account --key-file keys.json`
