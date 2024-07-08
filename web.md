@@ -61,6 +61,7 @@
 - https://github.com/i5nipe/nipejs
 - if find api key
     - https://github.com/streaak/keyhacks
+    - `nuclei -t http/token-spray/ -var token=ABC`
 
 ### manual tests
 - check [api.md](api.md)
@@ -151,11 +152,6 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
     * https://github.com/internetwache/GitTools
     * https://github.com/arthaud/git-dumper
 
-- check repos 
-    * manually
-    * https://github.com/gitleaks/gitleaks
-    * https://github.com/trufflesecurity/trufflehog
-
 
 ### keycloak
 - REALM_NAME='master' -> check too the original realm_name from app
@@ -180,6 +176,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 ### XSS
 - https://gist.github.com/morkin1792/8c9d2f1095d803b075e7a5a9e2aadea7 
 - XSStrike
+- dalfox
 
 ### XXE
     - read file: 1) eval 2) ?CDATA 3) php://

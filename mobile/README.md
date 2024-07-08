@@ -7,11 +7,11 @@
     * <pre> grep --color=yes -A5 -B5 -Einf patterns.regex index.android.js </pre>
     - [js analysis](../web.md#js-sensitive-information-analysis)
 ## ios
-- /var/mobile/Media  # mount point of usb storage
-- /var/containers/Bundle/Application # app
+- usb storage `/var/mobile/Media`
+- app `/var/containers/Bundle/Application`
+- generating ipa: `mkdir Payload && cp -r YourApp.app Payload/ && zip -r MyApp.ipa Payload`
+- https://cobalt.io/blog/ios-pentesting-101
+
 
 ## android
 - [android step 0](android_0.md)
-
-## to check
-- https://cobalt.io/blog/ios-pentesting-101

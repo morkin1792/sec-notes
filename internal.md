@@ -1,10 +1,11 @@
 # internal
 
-# to be answered
+# to be added
 - why smb ntlm via ssh didnt send creds?
 - how Mitm6 works?
 - If an attacker is intercepting a NTLM traffic of a client, can he relay it to the same machine that sends it?
 - arp spoofing instead of llmnr?
+- NetExec https://www.netexec.wiki/
 
 # internal methodology
 

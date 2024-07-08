@@ -4,28 +4,29 @@
 - Discover acquisitions
     https://www.crunchbase.com/discover/acquisitions
 
-- search target's leaks
-- search target in social medias (https://www.social-searcher.com/)
-- search target in pastebin, github, gitlab
-    * site:pastebin.com "target"
-    * site:github.com "target"
-    * site:gitlab.com "target"
-    * site:trello.com "target"
-    - https://github.com/search?q=site.com.br&type=code
-    - search authenticated in pastebin
-- search target in postman
-- search buckets in search engine and https://buckets.grayhatwarfare.com/
-- send email to inexistent account: NDN (non delivery notification) may show a useful descriptive error
-- more at https://osintframework.com/
-
-- [gather emails](web.md#gathering-users-emails-cpfs)
-- password leaks: dehashed, scylla.so, breachdirectory.org, HIBP, pastebin, google
+#### search target
+- leaks
+- social medias (https://www.social-searcher.com/)
+- `site:pastebin.com "target"`
+- `site:trello.com "target"`
+- `site:postman.com "target"`
+- authenticated in pastebin
+- jira
+- buckets: search engine + https://buckets.grayhatwarfare.com/buckets
+- search repos
+    * `site:github.com "target"`
+    * `site:gitlab.com "target"`
+    * https://github.com/search?q=target&type=code
+##### check repos 
+* manually
+* https://github.com/gitleaks/gitleaks
+* `trufflehog github --org=TARGET --only-verified --include-members --token github_...`
 
 ### Information Gathering - Step 2
 
 - get initial domains:
     * search engine + links in main websites
-    * search registrant: 
+    * save different registrants to search: 
         * registrant email in search engines
         * https://viewdns.info/reversewhois/
         * https://ti.defender.microsoft.com/
@@ -40,6 +41,8 @@
     * ?whoxy.com
     * ?search target cnpjs
     * ?robtex.com
+- domains with other suffixes: 
+    * `curl -s 'https://publicsuffix.org/list/public_suffix_list.dat' | grep -vE '^//' | sort -u | parallel -j 100 --results ~/project/curl/{} curl -si TARGET.{}`
 
 - get subdomains: 
     * [subdomains.sh](subdomains.sh)
@@ -88,8 +91,45 @@
         - recon-ng
         - ?theharvester
 
+### MS365
+- [gather emails](web.md#gathering-users-emails-cpfs)
+- password leaks: dehashed, scylla.so, breachdirectory.org, HIBP, pastebin, google
+- user enumeration (0,5,6 indicate the user is valid)
+```http
+POST /common/GetCredentialType?mkt=en HTTP/1.1
+Host: login.microsoftonline.com
+User-Agent: ...
+Content-type: application/json; charset=UTF-8
+Accept: application/json
+Origin: https://login.microsoftonline.com
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Accept-Encoding: gzip, deflate, br
+Accept-Language: en,pt-BR;q=0.9,pt;q=0.8,en-US;q=0.7
+
+{"username":"user@domain.tld"}
+```
+
+- password spraying + user enumeration
+```http
+POST /common/oauth2/token HTTP/1.1
+Host: login.microsoftonline.com
+Accept: application/json
+Content-Type: application/x-www-form-urlencoded
+Connection: close
+
+resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac224a7b894&client_info=1&grant_type=password&username=username%40domain.tld&password=Password1&scope=openid
+```
+
+#### post
+- vpn
+- admin center
+- portal azure (portal.azure.com)
+- outlook, teams
 
 ### scanning
+- brute s3 buckets (`gobuster s3 -k --wordlist subdomains.txt`)
 - subdomain takeover
     - dnsreaper
     - [subdomains.sh](subdomains.sh)
@@ -111,23 +151,48 @@
 - web screenshots
     * `gowitness file -f web.txt --user-agent "x" --debug ; gowitness server`
 - port scan
-    * tcp scan
-        - `nmap -sS -Pn -vv --open -iL hosts.txt -oN nmap.fast.tcp.out -p 80,443,445,8000,8080,8443`
-        - `nmap -Pn -D RND:xx -vv --open --script "not dos" --script-args 'newtargets,shodan-api.apikey=key' --top-ports X -iL hosts.txt -oN nmap.top.tcp.out`
-        - `naabu -Pn -exclude-cdn -exclude-ports 80,443 -list hosts.txt -o naabu.tcp.txt`
+    * short scan
+        - `nmap -sS -Pn -n -v3 --open -iL hosts.txt -oG nmap.short.tcp.txt -p 21,22,23,445,2049,3306,3389,5900` 
+    * full tcp scan
+        - `naabu -Pn -exclude-cdn -exclude-ports 80,443 -list ips.txt -o naabu.full.tcp.txt -p -`
+        - `masscan -p 0-79,81-442,444-65535 -iL ips.txt -oG masscan.full.tcp.txt --open #--resume paused.conf`
     * udp scan
-        - `nmap -sUV -Pn -vv --top-ports 10 --open -iL hosts.txt -oN nmap.udp.out`
-    * ?masscan
-- vulnerability scan
-    * `nuclei -l web.txt -H 'User-Agent: x' -rl Y -o nuclei_results.txt`
-    * nessus
+        - `nmap -sUV -Pn -vv --top-ports 10 --open -iL hosts.txt -oG nmap.udp.out`
+#### vulnerability scan
+- nessus
+##### nuclei
+- base: `nuclei -l subdomains.txt -H "User-Agent: X" -o nuclei.APPROACH.results.txt -retries 3` 
+- breadth-first: `-rate-limit 1500 -bulk-size 125 -concurrency 5 #-resume resume-file.cfg`
+- approaches
+1) sniper
+```sh
+-t http/miscellaneous/directory-listing.yaml \
+-t http/exposures/configs/phpinfo-files.yaml \
+-t http/exposures/apis/swagger-api.yaml \
+-t http/exposures/apis/wadl-api.yaml \
+-t http/exposures/apis/wsdl-api.yaml \
+-t http/exposures/configs/laravel-env.yaml \
+-t http/misconfiguration/aws/aws-object-listing.yaml \
+-t http/misconfiguration/glpi-directory-listing.yaml \
+-t http/misconfiguration/springboot \
+-t http/exposures/logs \
+-t http/takeovers \
+-t dns \
+-t cloud
+```
+2) new
+`-new-templates`
+3) gold
+`-exclude-severity info -etags cve,wordpress,wp-plugin,tech,ssl`
+4) underground
+5) reverse sniper
+
+### content discovery
 - fuzzing web paths
     - ? `nmap --script=http-enum -iL web.txt -p80,443`
     - `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
     - `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
 
-- search devs repos
-- [check repos](web.md#git)
 
 ### techniques against inbound network firewall
 * ipv6
