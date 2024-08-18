@@ -194,7 +194,7 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
     - `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
 
 ## Intruder Alternatives
-- curl + parallel: `cat /tmp/codes.txt | parallel -j 100 --results 'curl_output/{1}' curl --path-as-is -i -s -k -X 'POST' -H "'Content-Type: application/x-www-form-urlencoded'" -H "'User-Agent: Mozilla...'" --data-binary "'code={1}'" "'https://target.com/api/checkcode'"`
+- curl + parallel: `seq -f '%04g' 1000 9999 | parallel -j 100 --results 'curl_output/{1}' curl --path-as-is -i -s -k -X 'POST' -H "'Content-Type: application/x-www-form-urlencoded'" -H "'User-Agent: Mozilla...'" --data-binary "'code={1}'" "'https://target.com/api/checkcode'"`
 
 ## techniques against inbound network firewall
 * ipv6
