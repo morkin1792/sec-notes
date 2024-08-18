@@ -1,10 +1,10 @@
-## reconnaissance
+# reconnaissance
 
-### Information Gathering - Step 1
+## Information Gathering - Step 1
 - Discover acquisitions
     https://www.crunchbase.com/discover/acquisitions
 
-#### search target
+### search target
 - leaks
 - social medias (https://www.social-searcher.com/)
 - `site:pastebin.com "target"`
@@ -17,12 +17,12 @@
     * `site:github.com "target"`
     * `site:gitlab.com "target"`
     * https://github.com/search?q=target&type=code
-##### check repos 
+#### check repos 
 * manually
 * https://github.com/gitleaks/gitleaks
 * `trufflehog github --org=TARGET --only-verified --include-members --token github_...`
 
-### Information Gathering - Step 2
+## Information Gathering - Step 2
 
 - get initial domains:
     * search engine + links in main websites
@@ -91,7 +91,7 @@
         - recon-ng
         - ?theharvester
 
-### MS365
+## MS365
 - [gather emails](web.md#gathering-users-emails-cpfs)
 - password leaks: dehashed, scylla.so, breachdirectory.org, HIBP, pastebin, google
 - user enumeration (0,5,6 indicate the user is valid)
@@ -122,13 +122,13 @@ Connection: close
 resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac224a7b894&client_info=1&grant_type=password&username=username%40domain.tld&password=Password1&scope=openid
 ```
 
-#### post
+### post
 - vpn
 - admin center
 - portal azure (portal.azure.com)
 - outlook, teams
 
-### scanning
+## Scanning
 - brute s3 buckets (`gobuster s3 -k --wordlist subdomains.txt`)
 - subdomain takeover
     - dnsreaper
@@ -158,9 +158,9 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
         - `masscan -p 0-79,81-442,444-65535 -iL ips.txt -oG masscan.full.tcp.txt --open #--resume paused.conf`
     * udp scan
         - `nmap -sUV -Pn -vv --top-ports 10 --open -iL hosts.txt -oG nmap.udp.out`
-#### vulnerability scan
+### vulnerability scan
 - nessus
-##### nuclei
+#### nuclei
 - base: `nuclei -l subdomains.txt -H "User-Agent: X" -o nuclei.APPROACH.results.txt -retries 3` 
 - breadth-first: `-rate-limit 1500 -bulk-size 125 -concurrency 5 #-resume resume-file.cfg`
 - approaches
@@ -187,14 +187,16 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 4) underground
 5) reverse sniper
 
-### content discovery
+## Content discovery
 - fuzzing web paths
     - ? `nmap --script=http-enum -iL web.txt -p80,443`
     - `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
     - `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
 
+## Intruder Alternatives
+- curl + parallel: `cat /tmp/codes.txt | parallel -j 100 --results 'curl_output/{1}' curl --path-as-is -i -s -k -X 'POST' -H "'Content-Type: application/x-www-form-urlencoded'" -H "'User-Agent: Mozilla...'" --data-binary "'code={1}'" "'https://target.com/api/checkcode'"`
 
-### techniques against inbound network firewall
+## techniques against inbound network firewall
 * ipv6
 * set a source port
     * nmap --source-port 53
