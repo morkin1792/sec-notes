@@ -154,6 +154,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 
 ### keycloak
+- Try register replacing `auth` by `registrations` in the URL.
 - REALM_NAME='master' -> check too the original realm_name from app
 - /auth/realms/{REALM_NAME} -> pubkey to try downgrade attack
 - /auth/realms/{REALM_NAME}/account -> admin interface
