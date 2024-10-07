@@ -74,6 +74,8 @@
         - https://bgpview.io/
     - passivedns.mnemonic.no
     - ip address history
+        - https://securitytrails.com/domain/example.com/history/a
+        - https://viewdns.info/iphistory/?domain=example.com
         - https://builtwith.com/relationships/example.com
         - https://ti.defender.microsoft.com/search/data/resolutions?query=example.com
         - passivedns.mnemonic.no
