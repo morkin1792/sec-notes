@@ -198,6 +198,11 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 ## Intruder Alternatives
 - curl + parallel: `seq -f '%04g' 1000 9999 | parallel -j 100 --results 'curl_output/{1}' curl --path-as-is -i -s -k -X 'POST' -H "'Content-Type: application/x-www-form-urlencoded'" -H "'User-Agent: Mozilla...'" --data-binary "'code={1}'" "'https://target.com/api/checkcode'"`
 
+## Collaborator Alternative
+- https://app.interactsh.com
+- https://github.com/projectdiscovery/interactsh
+    * `interactsh-client -v`
+
 ## techniques against inbound network firewall
 * ipv6
 * set a source port
