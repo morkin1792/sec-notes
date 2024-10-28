@@ -67,8 +67,12 @@
 - check [api.md](api.md)
 - check [app_functionalities.md](app_functionalities.md)
 
-### bypass WAF/api gateway
-- accessing the server's ip address directly, check [ip address history](external.md#information-gathering---step-2)
+### bypassing WAF
+
+- A) change the payload
+    - A2) charset encoding (body allow to specify, url/headers do not, even so they all should be checked)
+- B) change the injection point (url, method or parameter)
+- C) [ip address history](external.md#information-gathering---step-2)
 
 ## web technologies
 
