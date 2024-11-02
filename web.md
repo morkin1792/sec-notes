@@ -295,14 +295,14 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 #### linux
 ```
+/proc/self/environ 
+/proc/self/cmdline
 /home/$USER/.ssh/id_rsa
 /home/$USER/.ssh/id_dsa
 /home/$USER/.ssh/id_ecdsa
+/home/$USER/.ssh/id_ed25519
 /home/$USER/.ssh/identity
-~/.ssh/id_rsa
-~/.ssh/id_dsa
-~/.ssh/id_ecdsa
-~/.ssh/identity
+~/.ssh/...
 ```
 - https://github.com/danielmiessler/SecLists/blob/master/Fuzzing/LFI/LFI-gracefulsecurity-linux.txt
 
