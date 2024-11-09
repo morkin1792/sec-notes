@@ -33,18 +33,18 @@
     * ?mitm6
     * ?arp spoofing
 - search smb targets, crackmapexec is good to check where signing is not required
-    * cme smb REDE --gen-relay-list output.txt
+    * ```cme smb REDE --gen-relay-list output.txt```
     * + ntlm relay saving hashes
 - look for creds in smbs with open shares
 - [AD password spraying](https://github.com/morkin1792/security-tests/edit/main/internal.md#ad-attacks)
 - check ftp anon login
-    * sudo nmap -n --script ftp-anon -p 21 -iL hosts.txt -oX ftp_results.txt
+    * ```nmap -n --script ftp-anon -p 21 -iL hosts.txt -oX ftp_results.txt```
 - check nfs
-    * sudo nmap -n -Pn -p 111,2049 --script nfs-ls -iL hosts.txt -oX nfs_results.txt
+    * ```nmap -n -Pn -p 111,2049 --script nfs-ls -iL hosts.txt -oX nfs_results.txt```
 - quick ssh brute force (oracle:oracle, root:root)
 - check smb null session
-    - crackmapexec smb -u "" -p "" --local-auth --shares $(cat hosts.txt) > hosts_smb_local.txt
-    - crackmapexec smb -u "" -p "" -d DOMAIN --shares $(cat hosts.txt) > hosts_smb_domain.txt
+    * ```crackmapexec smb -u "" -p "" --local-auth --shares $(cat hosts.txt) > hosts_smb_local.txt```
+    * ```crackmapexec smb -u "" -p "" -d DOMAIN --shares $(cat hosts.txt) > hosts_smb_domain.txt```
 - check vnc cve (nmap script)
 - check old windows versions in crackmapexec output
 - if not stealth: nuclei
