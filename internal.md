@@ -36,7 +36,7 @@
     * ```cme smb REDE --gen-relay-list output.txt```
     * + ntlm relay saving hashes
 - look for creds in smbs with open shares
-- [AD password spraying](https://github.com/morkin1792/security-tests/main/internal.md#ad-attacks)
+- [AD password spraying](#ad-attacks)
 - check ftp anon login
     * ```nmap -n --script ftp-anon -p 21 -iL hosts.txt -oX ftp_results.txt```
 - check nfs
