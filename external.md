@@ -5,8 +5,6 @@
     https://www.crunchbase.com/discover/acquisitions
 
 ### search target
-- leaks
-- social medias (https://www.social-searcher.com/)
 - `site:pastebin.com "target"`
 - `site:trello.com "target"`
 - `site:postman.com "target"`
@@ -17,6 +15,9 @@
     * `site:github.com "target"`
     * `site:gitlab.com "target"`
     * https://github.com/search?q=target&type=code
+- leaks
+- social medias (https://www.social-searcher.com/)
+
 #### check repos 
 * manually
 * https://github.com/gitleaks/gitleaks
