@@ -10,8 +10,23 @@
 - usb storage `/var/mobile/Media`
 - app `/var/containers/Bundle/Application`
 - generating ipa: `mkdir Payload && cp -r YourApp.app Payload/ && zip -r MyApp.ipa Payload`
+- installing ipa:
+   * 1) Unpack the ipa
+     2) Copy the folder inside Payload (<AppName>.app)
+     3) Paste it in /var/jb/Applications/
+     4) Run ```uicache -ar``` in an ios terminal
 - https://cobalt.io/blog/ios-pentesting-101
 
 
 ## android
 - [android step 0](android_0.md)
+
+## reversing flutter apps 
+https://www.guardsquare.com/blog/current-state-and-future-of-reversing-flutter-apps
+https://swarm.ptsecurity.com/fork-bomb-for-flutter/
+https://blog.tst.sh/reverse-engineering-flutter-apps-part-1/
+https://blog.tst.sh/reverse-engineering-flutter-apps-part-2/
+https://cryptax.medium.com/reversing-an-android-sample-which-uses-flutter-23c3ff04b847
+
+## to check
+Medusa mobile framework https://github.com/Ch0pin/medusa
