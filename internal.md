@@ -36,7 +36,7 @@
     * ```cme smb REDE --gen-relay-list output.txt```
     * + ntlm relay saving hashes
 - look for creds in smbs with open shares
-- [AD password spraying](#ad-attacks)
+- [AD password spraying](#password-spraying)
 - check ftp anon login
     * ```nmap -n --script ftp-anon -p 21 -iL hosts.txt -oX ftp_results.txt```
 - check nfs
@@ -246,7 +246,7 @@ sudo responder -I eth0 -v # default mode, can denial very old services
 * `kerbrute userenum -d corp.com --dc $kdcIp usernames.txt`
 * `nmap -p 88 --script krb5-enum-users --script-args krb5-enum-users.realm='corp.com',userdb=/root/user.txt $kdcIp`
 
-##### choosing password
+###### choosing password
 - default AD policy: Upper && Lower && numbers && 7 characters 
     - it can't contain the name of the user
     - Password1, Company123
