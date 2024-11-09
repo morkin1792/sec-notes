@@ -235,7 +235,9 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 ### f5 big-ip tmui
 - https://github.com/yassineaboukir/CVE-2020-5902
-
+- https://www.exploit-db.com/exploits/50932
+- https://www.exploit-db.com/exploits/49738
+    
 
 
 ## web vulnerabilities
@@ -246,7 +248,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 - [sqli](concepts/sqli.md)
 
 ### XSS
-- https://gist.github.com/morkin1792/8c9d2f1095d803b075e7a5a9e2aadea7 
+- https://gist.github.com/morkin1792/8c9d2f1095d803b075e7a5a9e2aadea7
 - XSStrike
 - dalfox
 
