@@ -27,7 +27,8 @@
 
 - get initial domains:
     * search engine + links in main websites
-    * save different registrants to search: 
+    * save different registrants to search:
+        * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
         * registrant email in search engines
         * https://viewdns.info/reversewhois/
         * https://ti.defender.microsoft.com/
