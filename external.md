@@ -1,10 +1,12 @@
 # reconnaissance
 
-## Information Gathering - Step 1
-- Discover acquisitions
-    https://www.crunchbase.com/discover/acquisitions
+## Information Gathering - Step 0 (initial knowledge)
+### understanding the target
+- https://www.crunchbase.com/discover/acquisitions
+- wikipedia
+- main website > check structure, group, subcompanies, other units
 
-### search target
+### searching for assets
 - `site:pastebin.com "target"`
 - `site:trello.com "target"`
 - `site:postman.com "target"`
@@ -18,82 +20,79 @@
 - leaks
 - social medias (https://www.social-searcher.com/)
 
-#### check repos 
+#### checking repos 
 * manually
 * https://github.com/gitleaks/gitleaks
 * `trufflehog github --org=TARGET --only-verified --include-members --token github_...`
 
-## Information Gathering - Step 2
+## Information Gathering - Step 1 (domains, subdomains, ips)
 
-- get initial domains:
-    * search engine + links in main websites
-    * save different registrants to search:
-        * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
-        * registrant email in search engines
-        * https://viewdns.info/reversewhois/
-        * https://ti.defender.microsoft.com/
-            - use wildcard to search
-        * security trails (soa records)
-    * host.io
-    * searchdns.netcraft.com
-    * search relations
-        * https://builtwith.com/relationships/example.com
-    * zone files: https://czds.icann.org/
-        * ?https://opendata.rapid7.com/sonar.fdns_v2/
-    * ?whoxy.com
-    * ?search target cnpjs
-    * ?robtex.com
-- domains with other suffixes: 
+### getting seeds (initial domains)
+* links in websites
+* google
+* googling copyright text, terms of service, privacy policy
+* save different registrants to search:
+    * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
+    * registrant email in search engines
+    * https://viewdns.info/reversewhois/
+    * security trails (soa records)
+* host.io
+* search relations: https://builtwith.com/relationships/example.com
+* searchdns.netcraft.com
+* zone files: https://czds.icann.org/
+    * ?https://opendata.rapid7.com/sonar.fdns_v2/
+* ?whoxy.com
+* ?search target cnpjs
+* ?robtex.com
+- domains with other suffixes
     * `curl -s 'https://publicsuffix.org/list/public_suffix_list.dat' | grep -vE '^//' | sort -u | parallel -j 100 --results ~/project/curl/{} curl -si TARGET.{}`
 
-- get subdomains: 
-    * [subdomains.sh](subdomains.sh)
-        * https://ti.defender.microsoft.com/
-        * security trails
-        * subfinder
-        * amass
-        * crt
-        * theHarvester
-    * https://developers.facebook.com/tools/ct
-    * dnsdumpster.com
-    * https://subdomains.whoisxmlapi.com
-    * brute dns: recon-ng, gobuster, dnsrecon
-    * zone transfer
-        * dnsrecon -d example.com -t axfr
-        * can affect just one ns of the target
-        * host -l example.com ns.example.com
-        * host -t AXFR example.com ns2.example.com
-        * dig -t AXFR example.com @ns.example.com +short 
-        * ?eldraco/domain_analyzer
-        
-- get ips:
-    - shodan (hostname:example.com)
-    - search.censys.io
-    - recon-ng
-    - search netblocks / ASN using known hosts
-    - search netblocks / ASN via target name
-        - https://bgp.he.net/
-        - https://bgpview.io/
-    - passivedns.mnemonic.no
-    - ip address history
-        - https://securitytrails.com/domain/example.com/history/a
-        - https://viewdns.info/iphistory/?domain=example.com
-        - https://builtwith.com/relationships/example.com
-        - https://ti.defender.microsoft.com/search/data/resolutions?query=example.com
-        - passivedns.mnemonic.no
-        - shodan
-        - censys
+### get subdomains
+* [subdomains.sh](subdomains.sh)
+    * security trails
+    * subfinder
+    * amass
+    * crt
+    * theHarvester
+* https://developers.facebook.com/tools/ct
+* dnsdumpster.com
+* https://subdomains.whoisxmlapi.com
+* brute dns: recon-ng, gobuster, dnsrecon
+* zone transfer
+    * dnsrecon -d example.com -t axfr
+    * can affect just one ns of the target
+    * host -l example.com ns.example.com
+    * host -t AXFR example.com ns2.example.com
+    * dig -t AXFR example.com @ns.example.com +short 
+    * ?eldraco/domain_analyzer
 
-- reverse dns lookup:
-    * manual: host -t ptr IP 
-    * prips RANGE_IP | hakrevdns
-        - https://github.com/hakluke/hakrevdns
-    * passivedns.mnemonic.no
-    * recon-ng: reverse_resolve
-    * tab DNS from https://bgp.he.net/net/{NETBLOCK}
-    * bing ip:"1.1.1.1"
-        - recon-ng
-        - ?theharvester
+### finding ips and ASNS
+- shodan.io/search?query=example.com
+- search.censys.io
+- search netblocks / ASN using known hosts
+- https://bgp.he.net/
+- https://bgpview.io/
+- enumerating asn: `amass intel -asn $ASN_NUMBER`
+- passivedns.mnemonic.no
+- ip address history
+    - https://securitytrails.com/domain/example.com/history/a
+    - https://viewdns.info/iphistory/?domain=example.com
+    - https://builtwith.com/relationships/example.com
+    - https://ti.defender.microsoft.com/search/data/resolutions?query=example.com
+    - passivedns.mnemonic.no
+    - shodan
+    - censys
+
+### reverse dns lookup
+* manual: host -t ptr IP 
+* prips RANGE_IP | hakrevdns
+    - https://github.com/hakluke/hakrevdns
+* passivedns.mnemonic.no
+* recon-ng: reverse_resolve
+* tab DNS from https://bgp.he.net/net/{NETBLOCK}
+* bing ip:"1.1.1.1"
+    - recon-ng
+    - ?theharvester
 
 ## MS365
 - [gather emails](web.md#gathering-users-emails-cpfs)
