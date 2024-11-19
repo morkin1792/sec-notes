@@ -1,8 +1,8 @@
 # web
 
-## web app methodology
-### explore app like a normal user
-- save interesting points and possible attacks
+## web methodology
+### use the app like a traditional user
+- saving interesting points and attacks ideas
     - blind xss
     - brute
     - idor
@@ -17,12 +17,12 @@
 - searchdns.netcraft.com
 - stackshare.io
 
-### search exploits manually to the technology
+### search for exploits
 - [searching exploits](external.md#exploitation)
 
 ### information gathering
-- [information gathering](external.md#information-gathering---step-1)
-- check how web site look like in web archive
+- [information gathering](external.md#searching-for-assets)
+- check target in web archive
 
 #### gathering users, emails, cpfs
 - search engine "@company"
@@ -35,28 +35,42 @@
 - nuclei, burp
 - `wpscan --random-user-agent --enumerate vp --plugins-detection aggressive --url example.com -o output.txt`
 - ~nikto, wapiti~
-- ?oneforall
 - ?rengine
 
-### path fuzzing
-- passive path fuzzing
-    - web.archive.org
-        - `curl 'https://web.archive.org/cdx/search?url=site.com.br&matchType=domain&fl=original&collapse=original&output=text&limit=100000' | sort -u`
-    - robots on webarchive
-    - search for "http" in reclameaqui
-    - google/bing
-    - https://urlscan.io/
-    - ?virustotal
-    - analisar codigo client-side
-        - TODO: add tool
-- active path fuzzing
-    - brute force with session token
-    - generate a wordlist https://gist.github.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e
-    - ?cewl
+### content discovery
+
+#### app analysis and history
+- web.archive.org
+    - `curl 'https://web.archive.org/cdx/search?url=site.com.br&matchType=domain&fl=original&collapse=original&output=text&limit=100000' | sort -u`
+- https://urlscan.io/
+- getallurls (https://github.com/lc/gau): `cat domains.txt | getallurls -subs -random-agent -o gau.results.txt`
+- https://github.com/xnl-h4ck3r/waymore: `waymore -i domains.txt -mode U -oU waymore.results.txt`
+- get api endpoints in apks: https://github.com/dwisiswant0/apkleaks
+- javascript parsing
+    * `xnLinkFinder.py -i example.com -v -d2 -sp https://example.com` (https://github.com/xnl-h4ck3r/xnLinkFinder)
+    * `xnLinkFinder -i waymore.results.txt -sf /tmp/domains.txt -o xnlinkfinder.results.txt`
+    * GAP BApp (https://github.com/xnl-h4ck3r/GAP-Burp-Extension)
+##### spider
+* using burp > visit the domains, add a filter and check sitemap > run spider and repeat until a fatigue
+* `gospider -s example.com --depth 1`
+* katana
+* hakrawler
+  
+#### analysing results
+- ?gowitness
+- https://github.com/1ndianl33t/Gf-Patterns
+
+#### bruting (fuzzing)
+- wordlist
+    - https://gist.github.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e
+    - https://github.com/digininja/CeWL
+- ?using session token
+* `cat subdomains.txt | feroxbuster --stdin -r -k --json -o feroxbuster.results.json -A --smart -w wordlist.txt #--parallel 1 --resume-from`
+* `cat feroxbuster.results.json | jq 'select (.status == 200) | select (.path | test("\\.(js|cs
+s|png|ico)$") | not)' | jq -s 'sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","
+status","content_length","word_count"}' -C | less -R`
 
 ### js sensitive information analysis
-- look for comments in html
-- ? `wget -mkEp -e robots=off`
 - https://github.com/m4ll0k/SecretFinder
 - https://github.com/i5nipe/nipejs
 - if find api key
@@ -72,7 +86,8 @@
 - A) change the payload
     - A2) charset encoding (body allow to specify, url/headers do not, even so they all should be checked)
 - B) change the injection point (url, method or parameter)
-- C) [ip address history](external.md#information-gathering---step-2)
+    - B2) domain variations that resolves to the same target (origin.sub -> origin-sub, www -> www2) 
+- C) [ip address history](external.md#finding-ips-and-asns)
 
 ## web technologies
 
