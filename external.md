@@ -28,7 +28,8 @@
 ## Information Gathering - Step 1 (domains, subdomains, ips)
 
 ### getting seeds (initial domains)
-* links in websites
+* `amass intel -d target -whois`
+* [spider](web.md#spider)
 * google
 * googling copyright text, terms of service, privacy policy
 * save different registrants to search:
@@ -36,40 +37,43 @@
     * registrant email in search engines
     * https://viewdns.info/reversewhois/
     * security trails (soa records)
-* host.io
 * search relations: https://builtwith.com/relationships/example.com
-* searchdns.netcraft.com
+* host.io
 * zone files: https://czds.icann.org/
     * ?https://opendata.rapid7.com/sonar.fdns_v2/
-* ?whoxy.com
-* ?search target cnpjs
-* ?robtex.com
+* whoxy.com
+* robtex.com
+* search target cnpjs
 - domains with other suffixes
     * `curl -s 'https://publicsuffix.org/list/public_suffix_list.dat' | grep -vE '^//' | sort -u | parallel -j 100 --results ~/project/curl/{} curl -si TARGET.{}`
 
-### get subdomains
+### getting subdomains
+#### subdomain scraping
 * [subdomains.sh](subdomains.sh)
     * security trails
     * subfinder
-    * amass
     * crt
-    * theHarvester
-* https://developers.facebook.com/tools/ct
-* dnsdumpster.com
-* https://subdomains.whoisxmlapi.com
-* brute dns: recon-ng, gobuster, dnsrecon
-* zone transfer
-    * dnsrecon -d example.com -t axfr
-    * can affect just one ns of the target
-    * host -l example.com ns.example.com
-    * host -t AXFR example.com ns2.example.com
-    * dig -t AXFR example.com @ns.example.com +short 
-    * ?eldraco/domain_analyzer
+    * amass
+* theHarvester: `python theHarvester.py -d TARGET -b binaryedge,rapiddns,crtsh,subdomaincenter,subdomainfinderc99`
+* github search (https://github.com/gwen001/github-subdomains)
+* shodan (shosubgo)
+
+#### subdomain bruting
+- check wildcards: try to resolve a invalid subdomain and check if it will return a record
+- `shuffledns -d example.com -w wordlist.txt -r resolvers.txt -mode bruteforce`
+- wordlist: https://wordlists.assetnote.io/
+
+#### zone transfer
+- manual
+   * can affect just one ns of the target
+   * `host -t NS example.com`
+   * `host -l example.com ns.example.com`
+   * `host -t AXFR example.com ns2.example.com`
+* `dnsrecon -d example.com -t axfr`
 
 ### finding ips and ASNS
-- shodan.io/search?query=example.com
 - search.censys.io
-- search netblocks / ASN using known hosts
+- shodan.io/search?query=example.com
 - https://bgp.he.net/
 - https://bgpview.io/
 - enumerating asn: `amass intel -asn $ASN_NUMBER`
@@ -191,10 +195,9 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 5) reverse sniper
 
 ## Content discovery
-- fuzzing web paths
-    - ? `nmap --script=http-enum -iL web.txt -p80,443`
-    - `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
-    - `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
+- `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -r -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
+- `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
+- [more content discovery](web.md#content-discovery)
 
 ## Intruder Alternatives
 - curl + parallel: `seq -f '%04g' 1000 9999 | parallel -j 100 --results 'curl_output/{1}' curl --path-as-is -i -s -k -X 'POST' -H "'Content-Type: application/x-www-form-urlencoded'" -H "'User-Agent: Mozilla...'" --data-binary "'code={1}'" "'https://target.com/api/checkcode'"`
