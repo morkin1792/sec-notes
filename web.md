@@ -52,10 +52,10 @@
     * GAP BApp (https://github.com/xnl-h4ck3r/GAP-Burp-Extension)
 ##### spider
 * using burp > visit the domains, add a filter and check sitemap > run spider and repeat until a fatigue
-* `gospider -s example.com --depth 1`
-* katana
-* hakrawler
-  
+* `katana -u example.com -H 'User-Agent: A' -o spider.katana.txt #-js-crawl -jsluice`
+* `gospider -s https://example.com --depth 3 -u web #| grep -iEo '[^/]*example.com' | sort -u`
+* `printf https://example.com | hakrawler -subs -h 'User-Agent: A' > spider.hakrawler.txt`
+
 #### analysing results
 - ?gowitness
 - https://github.com/1ndianl33t/Gf-Patterns
@@ -66,9 +66,7 @@
     - https://github.com/digininja/CeWL
 - ?using session token
 * `cat subdomains.txt | feroxbuster --stdin -r -k --json -o feroxbuster.results.json -A --smart -w wordlist.txt #--parallel 1 --resume-from`
-* `cat feroxbuster.results.json | jq 'select (.status == 200) | select (.path | test("\\.(js|cs
-s|png|ico)$") | not)' | jq -s 'sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","
-status","content_length","word_count"}' -C | less -R`
+* `cat feroxbuster.results.json | jq 'select (.status == 200) | select (.path | test("\\.(js|css|png|ico)$") | not)' | jq -s 'sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","status","content_length","word_count"}' -C | less -R`
 
 ### js sensitive information analysis
 - https://github.com/m4ll0k/SecretFinder
