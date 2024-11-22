@@ -1,4 +1,4 @@
-# reconnaissance
+# external
 
 ## Information Gathering - Step 0 (initial knowledge)
 ### understanding the target
@@ -72,33 +72,31 @@
 * `dnsrecon -d example.com -t axfr`
 
 ### finding ips and ASNS
-- search.censys.io
+- search.censys.io (validating: `openssl s_client -showcerts -connect $ip:443  <<< "Q"`)
 - shodan.io/search?query=example.com
 - https://bgp.he.net/
 - https://bgpview.io/
 - enumerating asn: `amass intel -asn $ASN_NUMBER`
-- passivedns.mnemonic.no
 - ip address history
     - https://securitytrails.com/domain/example.com/history/a
     - https://viewdns.info/iphistory/?domain=example.com
     - https://builtwith.com/relationships/example.com
-    - https://ti.defender.microsoft.com/search/data/resolutions?query=example.com
     - passivedns.mnemonic.no
     - shodan
     - censys
 
 ### reverse dns lookup
-* manual: host -t ptr IP 
-* prips RANGE_IP | hakrevdns
-    - https://github.com/hakluke/hakrevdns
+* `host -t ptr IP` 
+* https://github.com/hakluke/hakrevdns
+   * `function prips() { nmap -sL -n $1 | awk '/Nmap scan report/{print $NF}' }`
+   * `prips RANGE_IP | hakrevdns -r 1.1.1.1`
+* https://ipinfo.io/ips/1.1.1.0/24
 * passivedns.mnemonic.no
 * recon-ng: reverse_resolve
 * tab DNS from https://bgp.he.net/net/{NETBLOCK}
 * bing ip:"1.1.1.1"
-    - recon-ng
-    - ?theharvester
 
-## MS365
+## MS365 
 - [gather emails](web.md#gathering-users-emails-cpfs)
 - password leaks: dehashed, scylla.so, breachdirectory.org, HIBP, pastebin, google
 - user enumeration (0,5,6 indicate the user is valid)
@@ -149,6 +147,7 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
         * herokuapp.com
         * cloudfront.net
         * home.blog (wordpress)
+    - https://github.com/EdOverflow/can-i-take-over-xyz
     - https://0xpatrik.com/subdomain-takeover-basics/ 
     1) search CNAMEs pointing to available domains or services
     2) search NS and MX's domains available
@@ -158,15 +157,23 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 - web screenshots
     * `gowitness file -f web.txt --user-agent "x" --debug ; gowitness server`
 - port scan
-    * short scan
+    * quickly scan (low hangfruits)
         - `nmap -sS -Pn -n -v3 --open -iL hosts.txt -oG nmap.short.tcp.txt -p 21,22,23,445,2049,3306,3389,5900` 
     * full tcp scan
         - `naabu -Pn -exclude-cdn -exclude-ports 80,443 -list ips.txt -o naabu.full.tcp.txt -p -`
         - `masscan -p 0-79,81-442,444-65535 -iL ips.txt -oG masscan.full.tcp.txt --open #--resume paused.conf`
+        - rustscan
     * udp scan
         - `nmap -sUV -Pn -vv --top-ports 10 --open -iL hosts.txt -oG nmap.udp.out`
+- default credentials
+   * https://github.com/x90skysn3k/brutespray
 ### vulnerability scan
 - nessus
+- jaeles scanner
+- intrigue core
+- sn1per 
+- https://github.com/RetireJS/retire.js
+
 #### nuclei
 - base: `nuclei -l subdomains.txt -H "User-Agent: X" -o nuclei.APPROACH.results.txt -retries 3` 
 - breadth-first: `-rate-limit 1500 -bulk-size 125 -concurrency 5 #-resume resume-file.cfg`
