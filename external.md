@@ -86,7 +86,7 @@
     - censys
 
 ### reverse dns lookup
-* **⚠️ TIP: This step is important to identify third-party hosts. For instance, if an IP address is being resolved to cloudfront.net, this host is managed by amazon, so it is better to avoid infrastructure scans/tests on it.**
+* **⚠️ TIP: This step is important to identify and filter third-party hosts. For instance, if an IP address is being resolved to cloudfront.net, this host is managed by amazon, so it is better to avoid infrastructure scans/tests on it.**
 * `host -t ptr IP` 
 * https://github.com/hakluke/hakrevdns
    * `function prips() { nmap -sL -n $1 | awk '/Nmap scan report/{print $NF}' }`
