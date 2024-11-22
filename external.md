@@ -1,6 +1,6 @@
 # external
 
-## Information Gathering - Step 0 (initial knowledge)
+## Information Gathering - Initial Knowledge
 ### understanding the target
 - https://www.crunchbase.com/discover/acquisitions
 - wikipedia
@@ -25,7 +25,7 @@
 * https://github.com/gitleaks/gitleaks
 * `trufflehog github --org=TARGET --only-verified --include-members --token github_...`
 
-## Information Gathering - Step 1 (domains, subdomains, ips)
+## Information Gathering - Finding Attack Surfaces
 
 ### getting seeds (initial domains)
 * `amass intel -d target -whois`
@@ -86,6 +86,7 @@
     - censys
 
 ### reverse dns lookup
+* **⚠️ TIP: This step is important to identify third-party hosts. For instance, if an IP address is being resolved to cloudfront.net, this host is managed by amazon, so it is better to avoid infrastructure scans/tests on it.**
 * `host -t ptr IP` 
 * https://github.com/hakluke/hakrevdns
    * `function prips() { nmap -sL -n $1 | awk '/Nmap scan report/{print $NF}' }`
