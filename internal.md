@@ -821,7 +821,7 @@ Remove-Item -Path "HKCU:\SOFTWARE\Classes\ms-settings" -Recurse -Force
 - TODO: check ssh MitM *https://book.hacktricks.xyz/network-services-pentesting/pentesting-ssh#ssh-mitm*
 
 ## winrm
-- it remembers ssh
+- it reminds ssh
 - the user needs to be on the **Remote Management Users** or **Administrators** group.
 - linux: `evil-winrm -i $TARGET -u $USER -p $PASSWORD`
 - windows: `winrs -r:$TARGET -u:$USER -p:$PASSWORD "calc"`
