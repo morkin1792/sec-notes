@@ -156,7 +156,7 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 - get web services
     * `httpx -p http:80,8080,8000,8008,8888,9090,https:443,8443 -l hosts.txt -o web.txt`
 - web screenshots
-    * `gowitness file -f web.txt --user-agent "x" --debug ; gowitness server`
+    * `gowitness scan file -f web.txt --write-db ; gowitness report server`
 - port scan
     * quickly scan (low hangfruits)
         - `nmap -sS -Pn -n -v3 --open -iL hosts.txt -oG nmap.short.tcp.txt -p 21,22,23,445,2049,3306,3389,5900` 
@@ -165,7 +165,7 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
         - `masscan -p 0-79,81-442,444-65535 -iL ips.txt -oG masscan.full.tcp.txt --open #--resume paused.conf`
         - rustscan
     * udp scan
-        - `nmap -sUV -Pn -vv --top-ports 10 --open -iL hosts.txt -oG nmap.udp.out`
+        - `nmap -sUV -v3 --top-ports 23 --open -iL hosts.txt -oG nmap.udp.out`
 - default credentials
    * https://github.com/x90skysn3k/brutespray
 ### vulnerability scan
