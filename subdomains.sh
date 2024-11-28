@@ -2,7 +2,6 @@
 SecurityTrails="Fe26..."
 cf_clearance="..."
 userAgent="Mozilla..."
-microsoftAuthorization="eyJhb..."
 
 ## DNS resolver to be used 
 dnsServer="1.1.1.1"
@@ -25,22 +24,15 @@ function checkConfigs() {
         return 1
     fi
 
-    if [ ${#microsoftAuthorization} -lt 10 ]; then
-        cat <<EOF
-[-] missing set microsoft authorization token, to get it you can access ti.defender.microsoft.com and then run it in the browser console:
-for (var key in localStorage) {
-    if (key.indexOf("api") > 0) {
-        console.log(JSON.parse(localStorage.getItem(key)).secret)
-    }
-} 
-EOF
-        return 1
-    fi
-
     if [ ${#cf_clearance} -lt 10 ] || [ ${#SecurityTrails} -lt 10 ]; then
         printf "[-] log in to securitytrails.com, then get the cookies SecurityTrails and cf_clearance"
         return 1
     fi
+}
+
+function crt() {
+    domain="${1:?missing domain}"
+    curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $userAgent" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sed 's/^\*[.]//g' | sort -u
 }
 
 function getSubdomains() {
@@ -55,18 +47,12 @@ function getSubdomains() {
     for domain in $(cat $domainsFile); do
         crt $domain >> subdomains/crt.txt
         securityTrails $domain >> subdomains/securityTrails.txt
-        microsoftIntel $domain >> subdomains/microsoftIntel.txt
     done
     amass enum -df $domainsFile -o subdomains/amass_passive.log
     subfinder -all -dL $domainsFile -o subdomains/subfinder.txt
 
     cat subdomains/amass_passive.log | sed -e 's/\x1b\[[0-9;]*m//g' | grep -E "$(cat $domainsFile | tr '\n' '|' && printf "nonexistzzzzz")" | awk '{print $1}' > subdomains/amass_subdomains.txt 
     cat subdomains/*.txt | sort -u >> $subdomainsFile
-}
-
-function crt() {
-    domain="${1:?missing domain}"
-    curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $userAgent" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sed 's/^\*[.]//g' | sort -u
 }
 
 # function theharvester() {
@@ -77,11 +63,6 @@ function crt() {
 #     cat /tmp/harvester.json | jq -r '.hosts[]' | cut -d: -f1 | sort -u
 #     cd - >/dev/null
 # }
-
-function microsoftIntel() {
-    domain="${1:?missing domain}"
-    curl -s "https://prod.eur.ti.trafficmanager.net/api/dns/passive/subdomains/export?query=$domain" -H "User-Agent: $userAgent" -H "authorization: Bearer $microsoftAuthorization" | awk -F, '{print $1}' | tr -d '"' | tail +2 | sed 's/^\*[.]//g'
-}
 
 function securityTrails() {
     domain="${1:?missing domain}"
@@ -95,16 +76,21 @@ function securityTrails() {
     done
 }
 
+function getReverse() {
+    host "$1" | grep -o 'domain name pointer .*' | awk '{print $4}'
+}
+
 function compileResults() {
     inputFile="${1:=subdomains.txt}"
     resultsFile="${2:=results.csv}"
     rm -f $resultsFile
 
     for host in $(cat $inputFile | sort -u); do
-        checkHostIPs $host | sed "s/^/$(getDomain $host),/" >> $resultsFile
+        resultLine=$(checkHostIPs $host | sed "s/^/$(getDomain $host),/")
+        echo "$resultLine" | sed "s/\$/,$(getReverse "$(echo "$resultLine" | cut -d, -f3)")/" >> $resultsFile
     done
     sort $resultsFile -o $resultsFile
-    sed -i "1i domain,host,ip" $resultsFile
+    sed -i "1i domain,host,ip,reverse" $resultsFile
 }
 
 function nameNotFound() {
