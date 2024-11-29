@@ -1,4 +1,4 @@
-# external
+   # external
 
 ## Information Gathering - Initial Knowledge
 ### understanding the target
@@ -89,7 +89,7 @@
 * **⚠️ TIP: This step is important to identify and filter third-party hosts. For instance, if an IP address is being resolved to cloudfront.net, this host is managed by amazon, so it is better to avoid infrastructure scans/tests on it.**
 * `host -t ptr IP` 
 * https://github.com/hakluke/hakrevdns
-   * `function prips() { nmap -sL -n $1 | awk '/Nmap scan report/{print $NF}' }`
+   * `function prips() { for range in "$@"; do nmap -sL -n $range | awk '/Nmap scan report/{print $NF}' | tail +2 | head -n -1; done }`
    * `prips RANGE_IP | hakrevdns -r 1.1.1.1`
 * https://ipinfo.io/ips/1.1.1.0/24
 * passivedns.mnemonic.no
@@ -158,14 +158,18 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 - web screenshots
     * `gowitness scan file -f web.txt --write-db ; gowitness report server`
 - port scan
+    * prepare and filter the ip addresses to be scanned
+        - `prips $(cat ips.ranges.txt) > ips.all.txt`
+        - `cat subdomains.csv | grep -vE '\.(r.cloudfront|static.akamaitechnologies|exacttarget.com|sendgrid.net)' | cut -d, -f3 | tail +2 >> ips.all.txt`
+        - `cat ips.all.txt | awk '!x[$0]++' | tee -p ips.all.txt`
     * quickly scan (low hangfruits)
-        - `nmap -sS -Pn -n -v3 --open -iL hosts.txt -oG nmap.short.tcp.txt -p 21,22,23,445,2049,3306,3389,5900` 
+        - `nmap -sS -Pn -n -v3 --open -iL ips.all.txt -oG nmap.short.tcp.txt -p 21,22,23,445,2049,3306,3389,5900` 
     * full tcp scan
-        - `naabu -Pn -exclude-cdn -exclude-ports 80,443 -list ips.txt -o naabu.full.tcp.txt -p -`
-        - `masscan -p 0-79,81-442,444-65535 -iL ips.txt -oG masscan.full.tcp.txt --open #--resume paused.conf`
+        - `naabu -Pn -exclude-cdn -exclude-ports 80,443 -list ips.all.txt -o naabu.full.tcp.txt -p -`
+        - `masscan -p 0-79,81-442,444-65535 -iL ips.all.txt -oG masscan.full.tcp.txt --open #--resume paused.conf`
         - rustscan
     * udp scan
-        - `nmap -sUV -v3 --top-ports 23 --open -iL hosts.txt -oG nmap.udp.out`
+        - `nmap -sUV -v3 --top-ports 23 --open -iL ips.all.txt -oG nmap.udp.txt`
 - default credentials
    * https://github.com/x90skysn3k/brutespray
 ### vulnerability scan
