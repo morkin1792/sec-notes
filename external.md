@@ -180,8 +180,9 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 - https://github.com/RetireJS/retire.js
 
 #### nuclei
-- base: `nuclei -l subdomains.txt -H "User-Agent: X" -o nuclei.APPROACH.results.txt -retries 3` 
-- breadth-first: `-rate-limit 1500 -bulk-size 125 -concurrency 5 #-resume resume-file.cfg`
+- base: `nuclei -l web.txt -H "User-Agent: X" -o nuclei.APPROACH.results.txt -retries 3` 
+   * breadth-first: `-rate-limit 1500 -bulk-size 125 -concurrency 5 #-resume resume-file.cfg`
+   * 2gb ram: `-rate-limit 25 -c 5` 
 - approaches
 1) sniper
 ```sh
