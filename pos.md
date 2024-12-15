@@ -31,6 +31,7 @@
 - sim card
     - send sms with link
     - make a call
+- "track 2 nfc apk" and alternatives
 
 ## Android
 - physical keyboard: shortcuts to open other apps
