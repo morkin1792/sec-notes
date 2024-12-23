@@ -20,6 +20,7 @@
 
 ## android
 - [android step 0](android_0.md)
+- https://github.com/rednaga/APKiD/
 
 ## reversing flutter apps 
 https://www.guardsquare.com/blog/current-state-and-future-of-reversing-flutter-apps
