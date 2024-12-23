@@ -12,7 +12,6 @@
 - `site:postman.com "target"`
 - authenticated in pastebin
 - jira
-- buckets: search engine + https://buckets.grayhatwarfare.com/buckets
 - search repos
     * `site:github.com "target"`
     * `site:gitlab.com "target"`
@@ -23,7 +22,19 @@
 #### checking repos 
 * manually
 * https://github.com/gitleaks/gitleaks
-* `trufflehog github --org=TARGET --only-verified --include-members --token github_...`
+* `trufflehog github --org=TARGET --only-verified --include-members --json --token github_... > github.json`
+```sh
+cat github.json | jq 'select (.Verified == true)'
+```
+
+```sh
+cat github.json | jq 'select (
+  (.Verified != true) and
+  (.SourceMetadata.Data.Github.link | test("(yarn|test|lock[.]json|Podfile.lock|go[.]sum|composer.lock)") | not) and
+  (.Raw | test("(localhost|example|CONTINUOUS_INTEGRATION|127.0.0[.]1|user.pass|username.password)") | not) and
+  (.DetectorName | test("(Box)") | not)
+) | [.SourceMetadata.Data.Github.link,.DetectorName,.Raw]'
+```
 
 ## Information Gathering - Finding Attack Surfaces
 
@@ -59,9 +70,10 @@
 * shodan (shosubgo)
 
 #### subdomain bruting
+- **Important and simple step ⚠️**
 - check wildcards: try to resolve a invalid subdomain and check if it will return a record
-- `shuffledns -d example.com -w wordlist.txt -r resolvers.txt -mode bruteforce`
-- wordlist: https://wordlists.assetnote.io/
+- `shuffledns -d example.com -w subdomains-top1million-110000.txt -r resolvers.txt -mode bruteforce`
+- more wordlists: https://wordlists.assetnote.io/
 
 #### zone transfer
 - manual
@@ -135,7 +147,6 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 - outlook, teams
 
 ## Scanning
-- brute s3 buckets (`gobuster s3 -k --wordlist subdomains.txt`)
 - subdomain takeover
     - dnsreaper
     - [subdomains.sh](subdomains.sh)
@@ -157,6 +168,14 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
     * `httpx -p http:80,8080,8000,8008,8888,9090,https:443,8443 -l hosts.txt -o web.txt`
 - web screenshots
     * `gowitness scan file -f web.txt --write-db ; gowitness report server`
+- buckets
+   - search engine + https://buckets.grayhatwarfare.com/buckets
+   - brute s3 buckets (`gobuster s3 -k --wordlist subdomains.txt`)
+      - also replacing "." by "-" or nothing
+   - walking through all web apps looking for "amazonaws"
+   - `trufflehog s3 --bucket=bucket name`
+- walking through web apps looking for "eyJ"
+   - `hashcat -m 16500 jwts.txt ~/scraped-JWT-secrets.txt`
 - port scan
     * prepare and filter the ip addresses to be scanned
         - `prips $(cat ips.ranges.txt) > ips.all.txt`
