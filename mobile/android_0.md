@@ -87,6 +87,7 @@ chcon u:object_r:system_file:s0 /system/etc/security/cacerts/*
 - MagiskDenyList ~~MagiskHide (v23)~~ + Magisk Modules (Shamiko)
 - Frida scripts
     - https://codeshare.frida.re/@dzonerzy/fridantiroot/
+    - https://codeshare.frida.re/@fdciabdul/frida-multiple-bypass/
     - https://github.com/sensepost/objection
     - "root" inurl:codeshare.frida.re
 - Manual solution
