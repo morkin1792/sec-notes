@@ -24,11 +24,11 @@
 - https://cobalt.io/blog/ios-pentesting-101
 
 ## reversing flutter apps 
-https://www.guardsquare.com/blog/current-state-and-future-of-reversing-flutter-apps
-https://swarm.ptsecurity.com/fork-bomb-for-flutter/
-https://blog.tst.sh/reverse-engineering-flutter-apps-part-1/
-https://blog.tst.sh/reverse-engineering-flutter-apps-part-2/
-https://cryptax.medium.com/reversing-an-android-sample-which-uses-flutter-23c3ff04b847
+- https://www.guardsquare.com/blog/current-state-and-future-of-reversing-flutter-apps
+- https://swarm.ptsecurity.com/fork-bomb-for-flutter/
+- https://blog.tst.sh/reverse-engineering-flutter-apps-part-1/
+- https://blog.tst.sh/reverse-engineering-flutter-apps-part-2/
+- https://cryptax.medium.com/reversing-an-android-sample-which-uses-flutter-23c3ff04b847
 
 ## to check
 Medusa mobile framework https://github.com/Ch0pin/medusa
