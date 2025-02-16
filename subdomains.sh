@@ -30,7 +30,7 @@ function checkConfigs() {
     fi
 }
 
-function crt() {
+function checkCrt() {
     domain="${1:?missing domain}"
     curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $userAgent" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sed 's/^\*[.]//g' | sort -u
 }
@@ -45,7 +45,7 @@ function getSubdomains() {
 
     mkdir -p subdomains
     for domain in $(cat $domainsFile); do
-        crt $domain >> subdomains/crt.txt
+        checkCrt $domain >> subdomains/crt.txt
         securityTrails $domain >> subdomains/securityTrails.txt
     done
     amass enum -df $domainsFile -o subdomains/amass_passive.log
@@ -85,9 +85,11 @@ function compileResults() {
     resultsFile="${2:=results.csv}"
     rm -f $resultsFile
 
-    for host in $(cat $inputFile | sort -u); do
-        resultLine=$(checkHostIPs $host | sed "s/^/$(getDomain $host),/")
-        echo "$resultLine" | sed "s/\$/,$(getReverse "$(echo "$resultLine" | cut -d, -f3)")/" >> $resultsFile
+    for domain in $(cat $inputFile | sort -u); do
+        resultLine=$(checkHostIPs $domain | sed "s/^/$(getDomain $domain),/")
+        if [ ! -z "$resultLine" ]; then
+            echo "$resultLine" | sed "s/\$/,$(getReverse "$(echo "$resultLine" | cut -d, -f3)")/" >> $resultsFile
+        fi
     done
     sort $resultsFile -o $resultsFile
     sed -i "1i domain,host,ip,reverse" $resultsFile
