@@ -205,19 +205,19 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 - approaches
 1) sniper
 ```sh
--t http/miscellaneous/directory-listing.yaml \
--t http/exposures/configs/phpinfo-files.yaml \
 -t http/exposures/apis/swagger-api.yaml \
 -t http/exposures/apis/wadl-api.yaml \
 -t http/exposures/apis/wsdl-api.yaml \
+-t http/exposures/configs/git-config.yaml \
+-t http/exposures/configs/phpinfo-files.yaml \
 -t http/exposures/configs/laravel-env.yaml \
+-t http/exposures/configs/exposed-vscode.yaml \
+-t http/exposures/logs \
+-t http/miscellaneous/directory-listing.yaml \
 -t http/misconfiguration/aws/aws-object-listing.yaml \
 -t http/misconfiguration/glpi-directory-listing.yaml \
 -t http/misconfiguration/springboot \
--t http/exposures/logs \
--t http/takeovers \
--t dns \
--t cloud
+-t http/takeovers
 ```
 2) new
 `-new-templates`
