@@ -33,7 +33,7 @@
 
 ### automated scan
 - nuclei, burp
-- `wpscan --random-user-agent --enumerate vp --plugins-detection aggressive --url example.com -o output.txt`
+- `wpscan --random-user-agent --enumerate vp --plugins-detection aggressive --url example.com -o output.txt --api-token ... # https://wpscan.com/profile/`
 - ~nikto, wapiti~
 - ?rengine
 
