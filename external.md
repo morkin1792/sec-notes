@@ -165,7 +165,7 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
     2) search NS and MX's domains available
 
 - get web services
-    * `httpx -p http:80,8080,8000,8008,8888,9090,https:443,8443 -l hosts.txt -o web.txt`
+    * `httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -l hosts.txt -o web.txt`
 - web screenshots
     * `gowitness scan file -f web.txt --write-db ; gowitness report server`
 - buckets
