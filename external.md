@@ -3,6 +3,7 @@
 ## Information Gathering - Initial Knowledge
 ### understanding the target
 - https://www.crunchbase.com/discover/acquisitions
+   - https://www.crunchbase.com/organization/EXAMPLE/financial_details
 - wikipedia
 - main website > check structure, group, subcompanies, other units
 
