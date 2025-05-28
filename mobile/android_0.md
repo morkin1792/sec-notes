@@ -7,7 +7,7 @@ Some tricks to use when testing Android Apps
     * In the computer: `adb reverse tcp:8080 tcp:8080`
     * In the android: Set the WiFi proxy using `127.0.0.1` and `8080`
 * C) Apps ignoring the proxy (Flutter)
-    - A) **[🥇 Recommended]** Rethink VPN (https://github.com/celzero/rethink-app)
+    - A) **[🥇Recommended]** Rethink VPN (https://github.com/celzero/rethink-app)
        * Change DNS settings to "System DNS", Add a HTTP(S) CONNECT proxy, Start the "VPN" 
     - B) DNS poison + transparent proxy -> resolve all domains to a machine that have an http proxy running in ports 80 and 443.
        * One way is using rethinkdns app, Change DNS settings to "Other DNS" > Select "Proxy DNS".
