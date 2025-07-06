@@ -1,0 +1,13 @@
+# atm
+- check ethernet cable and usb ports
+- try to interact during booting
+- if same network, (arp spoofing || hardware mitm):
+    - control web page content
+        - download exes (cmd, virtual keyboard, ...)
+    - network traffic monitoring
+        - http
+        - smb (?.exe)
+- inside the system:
+    - if there is no internet access, consider type in base64 via keyboard typing
+    - serial port monitor
+        - cash dispenser: replay data trying to withdraw again
