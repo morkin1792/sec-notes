@@ -53,19 +53,19 @@ function checkRequirements() {
     requiredCommands=(
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         'shuffledns'        # go install -v github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest
-        'massdns'           # yay -S massdns
+        'massdns'           # yay -S massdns || (git clone https://github.com/blechschmidt/massdns.git && cd massdns && make && sudo make install)
         'chaos'             # go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
         'httpx'             # go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
         'dnsx'              # go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
         'cdncheck'          # go install -v github.com/projectdiscovery/cdncheck/cmd/cdncheck@latest
-        'psl'               # pacman -S libpsl
+        'psl'               # pacman -S libpsl || apt install psl
         'gospider'          # GO111MODULE=on go install github.com/jaeles-project/gospider@latest
         'gowitness'         # go install github.com/sensepost/gowitness@latest
         'gobuster'          # go install github.com/OJ/gobuster/v3@latest
         'github-subdomains' # go install github.com/gwen001/github-subdomains@latest
         'subzy'             # go install -v github.com/PentestPad/subzy@latest
-        'hashcat'           # pacman -S hashcat
-        'nmap'              # pacman -S nmap
+        'hashcat'           # pacman -S hashcat || apt install hashcat
+        'nmap'              # pacman -S nmap || apt install nmap
         'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
     )
