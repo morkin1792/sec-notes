@@ -223,8 +223,8 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 ### firebase
 - example.firebaseio.com/.json
-    https://pentestguy.in/pentesting-insecure-firebase-bugbounty-penetration-testing/
 - ?fuzzing tables names, ex: example.firebaseio.com/Users.json 
+- https://github.com/tauh33dkhan/Hacking-Insecure-Firebase-Database
 
 ### .git
 - try clone / extract files
