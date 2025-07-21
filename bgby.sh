@@ -137,6 +137,7 @@ EOF
     curl -L https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt -o $TMP_PATH/resolvers.txt
     
     # TODO: treat case where wildcard file is huge
+    # TODO: remove all cases that resolve anything
     for domain in $(cat $domainsFile <(echo) subdomains/chaos.wildcard.txt | sort -u); do
         shuffledns -d $domain -w $TMP_PATH/subdomain.list.txt -r $TMP_PATH/resolvers.txt -mode bruteforce -t 1000 -o $TMP_PATH/brute.$domain.txt
         # removing false positives lines from shuffledns output
