@@ -102,7 +102,15 @@
     - idea: change RS256 (RSA, asymmetric) to HS256 (HMAC, symmetric) and use pub key as secret key to sign
     - https://portswigger.net/web-security/jwt/algorithm-confusion
 - brute
-    - hashcat -m 16500 hash.txt -a 3 -w 3 ?a?a?a?a?a?a
+    - `hashcat -m 16500 hash.txt -a 3 -w 3 ?a?a?a?a?a?a`
+
+#### jwt cognito
+1) inside the jwt payload, check if scope is aws.cognito.signin.user.admin
+2) use the jwt token with aws cli to check available attributes 
+    - `aws cognito-idp get-user --access-token $JWT`
+3) use the token to change the attributes
+    - `aws cognito-idp update-user-attributes --access-token $JWT --user-attributes Name=email,Value=newemail@example.com`
+
 
 ### java
 - ACL bypass
