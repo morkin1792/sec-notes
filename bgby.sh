@@ -255,12 +255,14 @@ function spidering() {
         curl -LO https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Passwords/darkweb2017-top10000.txt
         curl -LO https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Passwords/darkc0de.txt
         curl -LO https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Passwords/xato-net-10-million-passwords.txt
+        curl -LO https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Passwords/scraped-JWT-secrets.txt
         curl -LO https://raw.githubusercontent.com/wallarm/jwt-secrets/refs/heads/master/jwt.secrets.list 
-        cat $TMP_PATH/passwords/* > $TMP_PATH/secrets.txt
+        cat $TMP_PATH/passwords/* | sort -u > $TMP_PATH/secrets.txt
     )
     hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/hashcat.jwts.txt
     
     # TODO: more analysis and regex. maybe using another tools
+    # TODO: check cognito 
 }
 
 function portScanning() {
