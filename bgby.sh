@@ -28,20 +28,14 @@ ENDC='\033[0m'
 
 
 
-# checkRequirements
-# echo starting discoverSubdomains: $(date) >> /var/tmp/log.txt
-# discoverSubdomains
-# echo starting compileSubdomains: $(date) >> /var/tmp/log.txt
-# compileSubdomains
-# echo starting analyzeReconResults: $(date) >> /var/tmp/log.txt
-# analyzeReconResults
-# echo starting spidering: $(date) >> /var/tmp/log.txt
-# spidering
-# echo starting portScanning: $(date) >> /var/tmp/log.txt
-# portScanning
-# echo starting webScanning: $(date) >> /var/tmp/log.txt
-# webScanning
-# echo finishing: $(date) >> /var/tmp/log.txt
+
+logAndCall discoverSubdomains
+logAndCall compileSubdomains
+logAndCall analyzeReconResults
+logAndCall webScanning
+logAndCall spidering
+logAndCall quickPortScanning
+logAndCall portScanning # requires sudo
 
 
 
@@ -223,9 +217,43 @@ function analyzeReconResults() {
 
 }
 
+function webScanning() {
+    
+    # wordpress
+    nuclei -silent -l web.txt  -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
+    cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
+    nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
+    
+    # TODO: solve archlinux issue with wpscan before require it
+    # for url in $(cat wordpress.txt); do
+    #     wpscan --random-user-agent --enumerate vp --url $url -o wpscan.$url.txt --api-token $WPSCAN_API_KEY
+    # done
+
+
+    # ?dalfox
+
+    nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
+        -t http/exposures/apis/swagger-api.yaml \
+        -t http/exposures/apis/wadl-api.yaml \
+        -t http/exposures/apis/wsdl-api.yaml \
+        -t http/exposures/configs/exposed-vscode.yaml \
+        -t http/exposures/configs/git-config.yaml \
+        -t http/exposures/configs/laravel-env.yaml \
+        -t http/exposures/configs/phpinfo-files.yaml \
+        -t http/exposures/logs \
+        -t http/miscellaneous/directory-listing.yaml \
+        -t http/misconfiguration/aws/aws-object-listing.yaml \
+        -t http/misconfiguration/glpi-directory-listing.yaml \
+        -t http/misconfiguration/springboot \
+        -t http/takeovers
+    
+    nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
+
+    # TODO: CONTENT DISCOVERY
+}
+
 function spidering() {
     gospider -S web.txt -u web -d 3 -R -o spider
-
     
     # CHECKING AWS URLS
     grep -Rio -Pa ".{2,30}amazonaws.{2,70}" spider | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" > $TMP_PATH/aws.txt 
@@ -265,54 +293,23 @@ function spidering() {
     # TODO: check cognito 
 }
 
-function portScanning() {
-    # TODO: try to get sudo permission from the user
-    
-    sudo echo
-    nmap -Pn -n -v3 --open -iL ips.txt -oG nmap.short.tcp.txt -p 21,22,23,445,2049,3306,3389,5900
-
-    if [ "$EUID" -ne 0 ]; then
-        nmap -Pn -n -v3 --open -T4 -iL ips.txt -oG nmap.top100.tcp.txt
-    else 
-        sudo nmap -sS -Pn -n -v3 --open -T4 -iL ips.txt -oG nmap.top100.tcp.txt
-        sudo nmap -sUV -v3 --top-ports 23 --open -iL ips.all.txt -oG nmap.udp.txt
-        sudo chown $USER:$USER nmap.*.txt
-    fi
+function quickPortScanning() {
+    nmap -Pn -n -v3 --open -iL ips.txt -oG nmap.quick.tcp.txt -p 21,22,23,445,1433,1521,2049,3306,3389,5432,5900
 }
 
-function webScanning() {
-    
-    # wordpress
-    # nuclei -silent -l web.txt  -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
-    # cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
-    # nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
-    
-    # TODO: solve archlinux issue with wpscan before require it
-    # for url in $(cat wordpress.txt); do
-    #     wpscan --random-user-agent --enumerate vp --url $url -o wpscan.$url.txt --api-token $WPSCAN_API_KEY
-    # done
+function portScanning() {
+    sudo -v
+    RUNNING=1
+    while [ $RUNNING -eq 1 ]; do
+        sudo -n true
+        sleep 60
+    done 2>/dev/null &
 
+    sudo nmap -sS -Pn -n -v3 --open -T4 -iL ips.txt -oG nmap.top100.tcp.txt
+    sudo nmap -sUV -v3 --top-ports 23 --open -iL ips.all.txt -oG nmap.udp.txt
+    sudo chown $USER:$USER nmap.*.txt
 
-    # ?dalfox
-
-    nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
-        -t http/exposures/apis/swagger-api.yaml \
-        -t http/exposures/apis/wadl-api.yaml \
-        -t http/exposures/apis/wsdl-api.yaml \
-        -t http/exposures/configs/exposed-vscode.yaml \
-        -t http/exposures/configs/git-config.yaml \
-        -t http/exposures/configs/laravel-env.yaml \
-        -t http/exposures/configs/phpinfo-files.yaml \
-        -t http/exposures/logs \
-        -t http/miscellaneous/directory-listing.yaml \
-        -t http/misconfiguration/aws/aws-object-listing.yaml \
-        -t http/misconfiguration/glpi-directory-listing.yaml \
-        -t http/misconfiguration/springboot \
-        -t http/takeovers
-    
-    nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
-
-    # TODO: CONTENT DISCOVERY
+    RUNNING=0
 }
 
 # - # - # - # - # - # - # - # - # - # - # - # - #
@@ -320,6 +317,17 @@ function webScanning() {
 #  aux functions
 
 # - # - # - # - # - # - # - # - # - # - # - # - #
+
+function logAndCall() {
+    local functionName="$1"
+    echo "starting $functionName: $(date)" >> /var/tmp/log.txt
+    $functionName
+    if [ $? -ne 0 ]; then
+        echo "[-] $functionName failed" >> /var/tmp/log.txt
+        exit 1
+    fi
+    echo "finished $functionName: $(date)" >> /var/tmp/log.txt
+}
 
 function nameNotFound() {
     if [ -z "$1" ]; then
