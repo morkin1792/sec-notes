@@ -62,6 +62,7 @@ function checkRequirements() {
         'nmap'              # pacman -S nmap || apt install nmap
         'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+        'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && gem install wpscan)
     )
     # 's3scanner'         # go install -v github.com/sa7mon/s3scanner@latest
     # dalfox # go install github.com/hahwul/dalfox/v2@latest
@@ -223,14 +224,9 @@ function webScanning() {
     nuclei -silent -l web.txt  -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
     nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
-    
-    # TODO: solve archlinux issue with wpscan before require it
-    # for url in $(cat wordpress.txt); do
-    #     wpscan --random-user-agent --enumerate vp --url $url -o wpscan.$url.txt --api-token $WPSCAN_API_KEY
-    # done
-
-
-    # ?dalfox
+    for url in $(cat wordpress.txt); do
+        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $WPSCAN_API_KEY
+    done
 
     nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
         -t http/exposures/apis/swagger-api.yaml \
@@ -248,6 +244,8 @@ function webScanning() {
         -t http/takeovers
     
     nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
+
+    # ?dalfox
 
     # TODO: CONTENT DISCOVERY
 }
@@ -276,7 +274,7 @@ function spidering() {
     done
 
     # CHECKING JWT TOKENS
-    grep -Eh -Roa "eyJ[^\"' ]{14,2048}" spider | pipeUrlDecode | sort -u > results/jwts.txt
+    grep -Eh -Roa "eyJ[^\"' ]{14,2048}" spider | urlDecode | sort -u > results/jwts.txt
     (
         mkdir -p $TMP_PATH/passwords/ && cd $_ && 
         curl -L https://weakpass.com/download/48/10_million_password_list_top_10000.txt.gz --output - | gunzip -c > 10_million_password_list_top_10000.txt
@@ -395,6 +393,10 @@ EOF
     rm -f "$tmp_python_script"
 }
 
-function pipeUrlDecode() {
+function urlDecode() {
     python3 -c "import sys; from urllib.parse import unquote; print(unquote(sys.stdin.read()));"
+}
+
+function url2path() {
+    echo $1 | sed 's/^http[s]\?...//' | sed 's/\//_/g'
 }
