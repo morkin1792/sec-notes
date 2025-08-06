@@ -223,7 +223,7 @@ Convert-SidToName S-1-5-...-1104
 ##### poison (responder)
 ```sh
 sudo responder -I eth0 -v # default mode, can denial very old services
--A # analyse mode, not poisoning, no dos
+-A # (passive) analyse mode, not poisoning, no dos
 -b # basic http authentication
 -wdF # ?wpad combo
 -Pd  # ?
