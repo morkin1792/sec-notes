@@ -34,7 +34,7 @@ function pullIpa() {
     echo "ok, trying to connect..."
     export SSHPASS
 
-    APP_OPTIONS=$(sshpass -e ssh -v mobile@$IP_ADDRESS "grep -REi -m1 \"$APP_NAME\" /var/containers/Bundle/Application/*/*/Info.plist")
+    APP_OPTIONS="$(sshpass -e ssh -v mobile@$IP_ADDRESS "grep -Eiao --color=yes \".{0,30}$APP_NAME.{0,30}\" /var/containers/Bundle/Application/*/*/Info.plist" | awk -F/ '!seen[$6]++')"
     APP_UUID=$(echo $APP_OPTIONS | awk -F'/' '{ print $6 }')
     AMOUNT_LINES=$(echo $APP_UUID | wc -l)
 
@@ -45,7 +45,9 @@ function pullIpa() {
         echo $APP_OPTIONS | grep --color=yes -Ei "$APP_NAME"
     else
         echo "[+] app found: $(echo $APP_OPTIONS | grep --color=yes -Ei "$APP_NAME")"
-        
+        echo "[-] keep your device connected to the wifi"
+        echo "downloading..."
+
         sshpass -e scp -r mobile@$IP_ADDRESS:/var/containers/Bundle/Application/$APP_UUID/ Payload 2>&1
         if [ ! $? -eq 0 ]; then
             echo "something is wrong, it was not possible to get the app files"
@@ -56,5 +58,4 @@ function pullIpa() {
             zip -rm "$NAME"_"$VERSION".ipa Payload
         fi
     fi
-
 }
