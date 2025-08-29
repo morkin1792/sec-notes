@@ -10,7 +10,7 @@
 
 ## android
 - [android step 0](android_0.md)
-- https://github.com/rednaga/APKiD/
+- checking RASP https://github.com/rednaga/APKiD/
 
 ## ios
 - usb storage `/var/mobile/Media`
