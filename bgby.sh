@@ -245,9 +245,15 @@ function webScanning() {
     
     nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
 
-    # ?dalfox
 
     # TODO: CONTENT DISCOVERY
+    
+    # TODO: more detailed app scan 
+    # - sqlmap
+    # - dalfox
+    # - dt: ?
+    # - ssti: ?gossti, ?SSTImap
+    # - https://github.com/topics/VULN
 }
 
 function spidering() {
