@@ -347,6 +347,7 @@ c:\windows\win.ini
 - https://github.com/danielmiessler/SecLists/blob/master/Fuzzing/LFI/LFI-gracefulsecurity-windows.txt
 
 #### general
+- config files (https://github.com/danielmiessler/SecLists/tree/master/Discovery/Web-Content/File-Extensions-Universal-SVNDigger-Project/cat/Conf)
 - https://github.com/danielmiessler/SecLists/blob/master/Fuzzing/LFI/LFI-linux-and-windows_by-1N3%40CrowdShield.txt
 ```
 file:///etc/passwd?/../../windows/win.ini
