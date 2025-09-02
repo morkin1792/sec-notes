@@ -304,6 +304,7 @@ http://phototor.com/2019/02/04/microsoft-iis-rce-vulnerability-cve-2017-7269/
 
 ### SSRF
 - [cloud metadata service address](cloud.md)
+- other schemes (gopher, smb, file, php)
 - ntlm relay && brute ntlm response
 - brute hosts (leaked internal ips)
 - path fuzzing
