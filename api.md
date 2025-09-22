@@ -4,9 +4,11 @@
 - subvert business rules
 - change Host
 - try change http methods
-    - common way
-    - /add_user?_method=DELETE
-    - X-HTTP-Method-Override: DELETE
+    - manual common way
+    - _method=PUT
+    - X-HTTP-Method-Override: PUT
+    - X-Method-Override: PUT
+    - X-Http-Method: PUT
 - understand how route is defined
     - add / at end of the path
     - check web cache deception
