@@ -250,9 +250,11 @@ function webScanning() {
     
     # TODO: more detailed app scan 
     # - sqlmap
-    # - dalfox
+    # - dalfox, XSStrike
     # - dt: ?
     # - ssti: ?gossti, ?SSTImap
+    # - ?ssrf: ?SSRFmap
+    # - ?ci: commix
     # - https://github.com/topics/VULN
 }
 
