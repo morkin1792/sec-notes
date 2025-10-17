@@ -15,6 +15,7 @@
 ## ios
 - usb storage `/var/mobile/Media`
 - app `/var/containers/Bundle/Application`
+- configs `/var/mobile/Containers/Data/Application/`
 - generating ipa: `mkdir Payload && cp -r YourApp.app Payload/ && zip -r MyApp.ipa Payload`
 - installing ipa:
    * 1) Unpack the ipa
