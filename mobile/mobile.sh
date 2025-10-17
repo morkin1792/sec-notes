@@ -45,17 +45,26 @@ function pullIpa() {
         echo $APP_OPTIONS | grep --color=yes -Ei "$APP_NAME"
     else
         echo "[+] app found: $(echo $APP_OPTIONS | grep --color=yes -Ei "$APP_NAME")"
-        echo "[-] keep your device connected to the wifi"
-        echo "downloading..."
+        echo "[*] keep your device connected to the wifi"
 
-        sshpass -e scp -r mobile@$IP_ADDRESS:/var/containers/Bundle/Application/$APP_UUID/ Payload 2>&1
+        echo "packing files..."
+        sshpass -e ssh -v mobile@$IP_ADDRESS "tar -cvf /tmp/app.tar -C /var/containers/Bundle/Application/$APP_UUID --transform='s|^.|Payload|' ."
+
+        echo "downloading..."
+        rm -f app.tar
+        sshpass -e scp -v mobile@$IP_ADDRESS:/tmp/app.tar . 2>&1
+
         if [ ! $? -eq 0 ]; then
             echo "something is wrong, it was not possible to get the app files"
         else
+            echo "ok\!"
+            sshpass -e ssh mobile@$IP_ADDRESS "rm -f /tmp/app.tar"
+            echo "repacking the file\!"
+            tar -xf app.tar && rm app.tar
             NAME=$(cat Payload/*/Info.plist | grep -i CFBundleName -A1 | grep -io '<string>[^<]*' | sed 's/^.\{8\}//')
             VERSION=$(cat Payload/*/Info.plist | grep -i CFBundleShortVersionString -A1 | grep -io '<string>[^<]*' | sed 's/^.\{8\}//')
-            echo "$NAME"_"$VERSION"
-            zip -rm "$NAME"_"$VERSION".ipa Payload
+            zip -q -rm "$NAME"_"$VERSION".ipa Payload
+            echo Check the file $(pwd)/"$NAME"_"$VERSION".ipa
         fi
     fi
 }
