@@ -60,9 +60,9 @@ function checkRequirements() {
         'subzy'             # go install -v github.com/PentestPad/subzy@latest
         'hashcat'           # pacman -S hashcat || apt install hashcat
         'nmap'              # pacman -S nmap || apt install nmap
-        'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+        'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-        'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && gem install wpscan)
+        'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && sudo gem install wpscan)
     )
     # 's3scanner'         # go install -v github.com/sa7mon/s3scanner@latest
     # dalfox # go install github.com/hahwul/dalfox/v2@latest
