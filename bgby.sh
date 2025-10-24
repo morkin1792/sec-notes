@@ -26,7 +26,7 @@ OKGREEN='\033[92m'
 WARNING='\033[93m'
 ENDC='\033[0m'
 
-
+echo Using $TMP_PATH as temporary space
 
 
 logAndCall discoverSubdomains
@@ -45,6 +45,7 @@ logAndCall portScanning # requires sudo
 
 function checkRequirements() {
     requiredCommands=(
+        'whois'             # pacman -S whois || apt install whois
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         'shuffledns'        # go install -v github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest
         'massdns'           # yay -S massdns || (git clone https://github.com/blechschmidt/massdns.git && cd massdns && make && sudo make install)
@@ -88,9 +89,10 @@ function discoverSubdomains() {
     for domain in $(cat $domainsFile); do
         checkCrt $domain >> subdomains/crt.txt
         export GITHUB_TOKEN=$GITHUB_API_KEY
-        github-subdomains -d $domain -o subdomains/github.$domain.txt
+        github-subdomains -d $domain -o subdomains/github.$domain.txt >> $TMP_PATH/github-subdomains.output.txt
     done
-    
+    cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
+    #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
     cat <<EOF >$TMP_PATH/provider-config.yaml
 securitytrails:
   - $SECURITY_TRAILS_API_KEY
@@ -143,7 +145,7 @@ EOF
     done
 
     # merge all subdomains
-    cat subdomains/* | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
+    cat subdomains/* | sed 's/^[.-]//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
 }
 
 function compileSubdomains() {
@@ -345,7 +347,7 @@ function nameNotFound() {
 function queryDNS() {
     type="$1"
     target="$2"
-    host -t $type $target $DNS_SERVER | tail +6 | grep -v ';; '
+    host -t $type -- $target $DNS_SERVER | tail +6 | grep -v ';; '
 }
 
 declare -A whoisDict
