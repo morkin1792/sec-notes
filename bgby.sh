@@ -54,7 +54,7 @@ function checkRequirements() {
         'cdncheck'          # go install -v github.com/projectdiscovery/cdncheck/cmd/cdncheck@latest
         'psl'               # pacman -S libpsl || apt install psl
         'gospider'          # GO111MODULE=on go install github.com/jaeles-project/gospider@latest
-        'gowitness'         # go install github.com/sensepost/gowitness@latest
+        'gowitness'         # go install github.com/sensepost/gowitness@latest (&& apt install chromium)
         'gobuster'          # go install github.com/OJ/gobuster/v3@latest
         'github-subdomains' # go install github.com/gwen001/github-subdomains@latest
         'subzy'             # go install -v github.com/PentestPad/subzy@latest
@@ -168,7 +168,7 @@ function compileSubdomains() {
     sed -i "1i domain,subdomain,ip,ptr,type" $resultsFile
     
     echo "[*] Filter $resultsFile"
-    xdg-open $resultsFile
+    # xdg-open $resultsFile
 }
 
 function analyzeReconResults() {
