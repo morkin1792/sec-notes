@@ -23,7 +23,7 @@
 #### checking repos 
 * manually
 * https://github.com/gitleaks/gitleaks
-* `trufflehog github --org=TARGET --only-verified --include-members --json --token github_... > github.json`
+* `trufflehog github --org=TARGET --include-members --json --token $GITHUB_TOKEN > github.truffle.json 2> github.truffle.err.json  #for now there is a bug that do not allow the use of token + user, just token + organization or a user without token`
 ```sh
 cat github.json | jq 'select (.Verified == true)'
 ```
