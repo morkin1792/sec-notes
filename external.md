@@ -23,7 +23,14 @@
 #### checking repos 
 * manually
 * https://github.com/gitleaks/gitleaks
-* `trufflehog github --org=TARGET --include-members --json --token $GITHUB_TOKEN > github.truffle.json 2> github.truffle.err.json  #for now there is a bug that do not allow the use of token + user, just token + organization or a user without token`
+* `trufflehog github --org=TARGET --include-members --json --token $GITHUB_TOKEN > github.truffle.json 2> github.truffle.err.json`
+* for now, there is a bug [[ref](https://github.com/trufflesecurity/trufflehog/issues/4517)] that do not allow the use of token + user, just token + organization or a user without token. the following steps may solved it:
+```
+1. Go to the function `getReposByOrgOrUser` inside [pkg/sources/github/repo.go](tree/main/pkg/sources/github/repo.go);
+2. Remove the parameter `authenticated`, and pass `false` to the function `getReposByUser()`;
+3. Inside [pkg/sources/github/github.go](tree/main/pkg/sources/github/github.go), update all the references that call `getReposByOrgOrUser`, removing the boolean parameter. 
+```
+
 ```sh
 cat github.json | jq 'select (.Verified == true)'
 ```
