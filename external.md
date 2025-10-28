@@ -8,20 +8,64 @@
 - main website > check structure, group, subcompanies, other units
 
 ### searching for assets
-- `site:pastebin.com "target"`
-- `site:trello.com "target"`
-- `site:postman.com "target"`
-- authenticated in pastebin
-- jira
-- search repos
-    * `site:github.com "target"`
-    * `site:gitlab.com "target"`
-    * https://github.com/search?q=target&type=code
-- leaks
-- social medias (https://www.social-searcher.com/)
+- google + ddgo dorks
+```
+site:pastebin.com "TARGET"
+site:trello.com "TARGET"
+site:postman.com "TARGET"
+site:t.me "TARGET"
+```
+- ?authenticated in pastebin
+- ?jira
+- ?leaks
+
+#### searching for github users
+```
+site:linkedin.com/in "TARGET" "github.com"
+site:linkedin.com/in "TARGET" "github.com" "COUNTRY"
+site:github.com "TARGET"
+https://github.com/search?q=TARGET&type=users
+```
+
+#### gathering more users
+```sh
+function getPotentialPeople() {
+    confirmedUsersFile="${1:=github.users.txt}"
+    potentialUsersFile="${2:=github.potential.txt}"
+    potentialTargets=()
+    for USER in $(cat $confirmedUsersFile); do
+        potentialTargets+=$(curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/users/$USER/followers | jq '.[].login' -r)
+        potentialTargets+=$(curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/users/$USER/following | jq '.[].login' -r)
+        echo $potentialTargets | tr ' ' '\n' | sort -u
+    done
+    echo $potentialTargets | tr ' ' '\n' | sort -u > $potentialUsersFile
+}
+
+function checkPotentialPeople() {
+    target="${1:?Error: TARGET not defined. i.e. 'ddgo', 'duckduckgo'}"
+    potentialUsersFile="${2:=github.potential.txt}"
+    confirmedUsersFile="${3:=github.users.txt}"
+    linkedinCheckFile="${4:=github.check.linkedin.txt}"
+
+    confirmedUsers=()
+    checkLinkedin=()
+    for USER in $(cat $potentialUsersFile); do
+        data=$(curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/users/$USER)
+        linkedin="$(echo $data | grep -Eio 'linkedin\.com[^"]*')"
+        if ( echo $data | grep -Ei "$target" ); then
+            echo $USER
+            confirmedUsers+=$USER
+        elif [ ! -z "$linkedin" ]; then
+            checkLinkedin+=($USER:$linkedin)
+            # TODO: ?curl linkedin
+        fi
+    done
+    echo $confirmedUsers | tr ' ' '\n' | sort -u >> $confirmedUsersFile
+    echo $checkLinkedin | tr ' ' '\n' | tr ':' ' ' > $linkedinCheckFile
+}
+```
 
 #### checking repos 
-* manually
 * https://github.com/gitleaks/gitleaks
 * `trufflehog github --org=TARGET --include-members --json --token $GITHUB_TOKEN > github.truffle.json 2> github.truffle.err.json`
 * for now, there is a bug [[ref](https://github.com/trufflesecurity/trufflehog/issues/4517)] that do not allow the use of token + user, just token + organization or a user without token. the following steps may solved it:
@@ -47,11 +91,12 @@ cat github.json | jq 'select (
 ## Information Gathering - Finding Attack Surfaces
 
 ### getting seeds (initial domains)
-* `amass intel -d target -whois`
+* navigate through the main website (who are we, foot pages)
+* social medias (https://www.social-searcher.com/)
+* `"target.com" -site:target.com`
 * [spider](web.md#spider)
-* google
-* googling copyright text, terms of service, privacy policy
-* save different registrants to search:
+* ?`amass intel -d target -whois`
+* search for registrants:
     * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
     * registrant email in search engines
     * https://viewdns.info/reversewhois/
@@ -62,8 +107,7 @@ cat github.json | jq 'select (
     * ?https://opendata.rapid7.com/sonar.fdns_v2/
 * whoxy.com
 * robtex.com
-* search target cnpjs
-- domains with other suffixes
+* domains with other suffixes
     * `curl -s 'https://publicsuffix.org/list/public_suffix_list.dat' | grep -vE '^//' | sort -u | parallel -j 100 --results ~/project/curl/{} curl -si TARGET.{}`
 
 ### getting subdomains
