@@ -52,3 +52,8 @@ ln -s /etc/passwd link
 zip --symlinks evil.zip link
 ```
 
+## purchase
+- negative price
+- float amount
+- race condition: multiple coupons
+- race condition: adding product when paying
