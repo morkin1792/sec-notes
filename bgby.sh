@@ -4,6 +4,8 @@
 ######## SETTINGS ########
 ##########################
 
+## TODO: Move secrets to external config
+
 # https://github.com/settings/personal-access-tokens
 GITHUB_API_KEY="github..."
 # https://cloud.projectdiscovery.io/?ref=api_key
@@ -257,8 +259,19 @@ function webScanning() {
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
 
     # TODO: CONTENT DISCOVERY in webFilteredFile
-    # TODO: more detailed app scan
-    # - spider > sqlmap, dalfox, XSStrike
+    
+    # TODO: extract URLS, choose some and then try more specific tools
+    # extract URLs + parameters (+ methods): katana - OK 
+    # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
+    # https://github.com/morkin1792/sec-notes/blob/8007e2b6a08811c4d445916ae23355d0d7335ba7/web.md#content-discovery
+    
+    # choosing urls:
+    #    - preprocessing (removing static files, tracking parameters, parameter blacklist)
+    #    - maybe manually requesting (checking for reflection, sql error)
+    #    - ?llama, gpt4all
+    
+    # running
+    # - sqlmap, dalfox, XSStrike
     # - dt: ?
     # - ssti: ?gossti, ?SSTImap
     # - ?ssrf: ?SSRFmap
@@ -304,6 +317,7 @@ function spidering() {
         cat $TMP_PATH/passwords/* | sort -u > $TMP_PATH/secrets.txt
     )
     hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/hashcat.jwts.txt
+    #hashcat results/jwts.txt --show
     
     # TODO: more analysis and regex. maybe using another tools
     # TODO: check cognito 
