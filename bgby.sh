@@ -209,11 +209,12 @@ function analyzeReconResults() {
     gobuster s3 -k --wordlist $TMP_PATH/hosts.txt --no-color -o results/buckets.s3.txt
 
     # GETTING WEB HOSTS
-    httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -l <(cat $hostsFile | awk -F, '{print $2}') -o web.txt
+    httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l <(cat $hostsFile | awk -F, '{print $2}') -json -o web.all.json
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.content_length|tostring)' web.all.json | awk -F, '$2!=301 && $2!=302' | awk -F, '!seen[$3 FS $4]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > web.txt
     filterWebUrls web.txt
 
     # GETTING WEB SCREENSHOTS
-    mkdir -p gowitness; cd $_; gowitness scan file -f ../web.txt --write-db; cd ..
+    mkdir -p gowitness; cd $_; gowitness scan file -f <(jq -r '.url' web.all.json) --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
     cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > ips.txt
