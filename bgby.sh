@@ -35,7 +35,7 @@ logAndCall analyzeReconResults
 logAndCall webScanning
 logAndCall spidering
 logAndCall quickPortScanning
-logAndCall portScanning # requires sudo
+# logAndCall portScanning # requires sudo
 
 
 
@@ -46,6 +46,7 @@ logAndCall portScanning # requires sudo
 function checkRequirements() {
     requiredCommands=(
         'whois'             # pacman -S whois || apt install whois
+        'jq'                # pacman -S jq || apt install jq
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         'shuffledns'        # go install -v github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest
         'massdns'           # yay -S massdns || (git clone https://github.com/blechschmidt/massdns.git && cd massdns && make && sudo make install)
@@ -176,6 +177,9 @@ function compileSubdomains() {
 function analyzeReconResults() {
     subdomainsFile="${1:=subdomains.all.txt}"
     hostsFile="${2:=hosts.csv}"
+    outputWebAllFile="${3:=web.all.txt}"
+    outputWebFile="${4:=web.filtered.txt}"
+    outputIpsFile="${5:=ips.txt}"
 
     # TAKEOVER
     function checkTakeover() {
@@ -210,28 +214,32 @@ function analyzeReconResults() {
 
     # GETTING WEB HOSTS
     httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l <(cat $hostsFile | awk -F, '{print $2}') -json -o web.all.json
-    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.content_length|tostring)' web.all.json | awk -F, '$2!=301 && $2!=302' | awk -F, '!seen[$3 FS $4]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > web.txt
-    filterWebUrls web.txt
+    jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $outputWebAllFile
+    filterWebUrls $outputWebAllFile
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.lines|tostring) + "," + (.words|tostring)' web.all.json | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $outputWebFile
+    filterWebUrls $outputWebFile
 
     # GETTING WEB SCREENSHOTS
-    mkdir -p gowitness; cd $_; gowitness scan file -f <(jq -r '.url' web.all.json) --write-db; cd ..
+    mkdir -p gowitness; cd $_; gowitness scan file -f $outputWebAllFile --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
-    cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > ips.txt
+    cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > $outputIpsFile
 
 }
 
 function webScanning() {
+    webAllFile="${1:=web.all.txt}"
+    webFilteredFile="${2:=web.filtered.txt}"
     
     # wordpress
-    nuclei -silent -l web.txt  -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
+    nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
     nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
     for url in $(cat wordpress.txt); do
         wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $WPSCAN_API_KEY
     done
 
-    nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
+    nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
         -t http/exposures/apis/swagger-api.yaml \
         -t http/exposures/apis/wadl-api.yaml \
         -t http/exposures/apis/wsdl-api.yaml \
@@ -246,14 +254,11 @@ function webScanning() {
         -t http/misconfiguration/springboot \
         -t http/takeovers
     
-    nuclei -l web.txt -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
+    nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
 
-
-    # TODO: CONTENT DISCOVERY
-    
-    # TODO: more detailed app scan 
-    # - sqlmap
-    # - dalfox, XSStrike
+    # TODO: CONTENT DISCOVERY in webFilteredFile
+    # TODO: more detailed app scan
+    # - spider > sqlmap, dalfox, XSStrike
     # - dt: ?
     # - ssti: ?gossti, ?SSTImap
     # - ?ssrf: ?SSRFmap
@@ -262,7 +267,9 @@ function webScanning() {
 }
 
 function spidering() {
-    gospider -S web.txt -u web -d 3 -R -o spider
+    webFilteredFile="${1:=web.filtered.txt}"
+    
+    gospider -S $webFilteredFile -u web -d 3 -R -o spider
     
     # CHECKING AWS URLS
     grep -Rio -Pa ".{2,30}amazonaws.{2,70}" spider | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" > $TMP_PATH/aws.txt 
@@ -303,10 +310,12 @@ function spidering() {
 }
 
 function quickPortScanning() {
-    nmap -Pn -n -v3 --open -iL ips.txt -oG nmap.quick.tcp.txt -p 21,22,23,445,1433,1521,2049,3306,3389,5432,5900
+    ipsFile="${1:=ips.txt}"
+    nmap -Pn -n -v3 --open -iL $ipsFile -oG nmap.quick.tcp.txt -p 21,22,23,445,1433,1521,2049,3306,3389,5432,5900
 }
 
 function portScanning() {
+    ipsFile="${1:=ips.txt}"
     sudo -v
     RUNNING=1
     while [ $RUNNING -eq 1 ]; do
@@ -314,8 +323,8 @@ function portScanning() {
         sleep 60
     done 2>/dev/null &
 
-    sudo nmap -sS -Pn -n -v3 --open -T4 -iL ips.txt -oG nmap.top100.tcp.txt
-    sudo nmap -sUV -v3 --top-ports 23 --open -iL ips.all.txt -oG nmap.udp.txt
+    sudo nmap -sS -Pn -n -v3 --open -T4 -iL $ipsFile -oG nmap.top100.tcp.txt
+    sudo nmap -sUV -v3 --top-ports 23 --open -iL $ipsFile -oG nmap.udp.txt
     sudo chown $USER:$USER nmap.*.txt
 
     RUNNING=0
