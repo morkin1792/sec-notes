@@ -282,9 +282,7 @@ resource=https%3A%2F%2Fgraph.windows.net&client_id=1b730954-1685-4b74-9bfd-dac22
 5) reverse sniper
 
 ## Content discovery
-- `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -r -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
-- `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
-- [more content discovery](web.md#content-discovery)
+- [content discovery](web.md#content-discovery)
 
 ## Intruder Alternatives
 - curl + parallel: `seq -f '%04g' 1000 9999 | parallel -j 100 --results 'curl_output/{1}' curl --path-as-is -i -s -k -X 'POST' -H "'Content-Type: application/x-www-form-urlencoded'" -H "'User-Agent: Mozilla...'" --data-binary "'code={1}'" "'https://target.com/api/checkcode'"`
