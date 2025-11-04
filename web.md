@@ -65,8 +65,13 @@
     - https://gist.github.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e
     - https://github.com/digininja/CeWL
 - ?using session token
+##### feroxbuster
 * `cat web.txt | feroxbuster --stdin -r -k -A -d1 --smart --json  -o feroxbuster.results.json -w wordlist.txt #--parallel 1 --resume-from`
 * `cat feroxbuster.results.json | jq 'select (.status == 200) | select (.path | test("\\.(js|css|png|ico)$") | not)' | jq -s 'sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","status","content_length","word_count"}' -C | less -R`
+##### ffuf
+- `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -r -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
+- `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
+
 
 ### js sensitive information analysis
 - https://github.com/m4ll0k/SecretFinder
