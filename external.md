@@ -1,4 +1,4 @@
-   # external
+# external
 
 ## Information Gathering - Initial Knowledge
 ### understanding the target
@@ -92,16 +92,19 @@ cat github.json | jq 'select (
 
 ### getting seeds (initial domains)
 * navigate through the main website (who are we, foot pages)
-* social medias (https://www.social-searcher.com/)
+* spidering: `httpx -l scope.txt | gospider -u web -d 3 -R | grep -iE 'http[s]?://[^/"]*' -o | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter' | sort -u`
 * `"target.com" -site:target.com`
-* [spider](web.md#spider)
-* ?`amass intel -d target -whois`
+* search relations: https://builtwith.com/relationships/TARGET.COM
 * search for registrants:
+    * domain in https://search.dnslytics.com/domain/TARGET.COM
     * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
     * registrant email in search engines
     * https://viewdns.info/reversewhois/
     * security trails (soa records)
-* search relations: https://builtwith.com/relationships/example.com
+
+#### extra
+* ?`amass intel -d target -whois`
+* social medias (https://www.social-searcher.com/)
 * host.io
 * zone files: https://czds.icann.org/
     * ?https://opendata.rapid7.com/sonar.fdns_v2/
