@@ -222,7 +222,7 @@ function analyzeReconResults() {
     filterWebUrls $outputWebFile
 
     # GETTING WEB SCREENSHOTS
-    mkdir -p gowitness; cd $_; gowitness scan file -f $outputWebAllFile --write-db; cd ..
+    mkdir -p gowitness; cd $_; gowitness scan file -f ../$outputWebAllFile --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
     cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > $outputIpsFile
