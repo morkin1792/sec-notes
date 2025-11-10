@@ -43,7 +43,7 @@
 - web.archive.org
     - `curl 'https://web.archive.org/cdx/search?url=site.com.br&matchType=domain&fl=original&collapse=original&output=text&limit=100000' | sort -u`
 - https://urlscan.io/
-- getallurls (https://github.com/lc/gau): `cat domains.txt | getallurls -subs -random-agent -o gau.results.txt`
+- getallurls (https://github.com/lc/gau): `cat domains.txt | gau --subs --o gau.results.txt`
 - https://github.com/xnl-h4ck3r/waymore: `waymore -i domains.txt -mode U -oU waymore.results.txt`
 - get api endpoints in apks: https://github.com/dwisiswant0/apkleaks
 - javascript parsing
