@@ -302,8 +302,22 @@ function webScanning() {
     # TODO: CONTENT DISCOVERY in webFilteredFile
 
     curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
-    cat $urlsFile | awk -F/ '{print $4}' | IGNORE="png|css|js|jpeg|jpg|svg|woff2" grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sort -u > $TMP_PATH/fuzz.custom1.txt
-    cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | grep -vE '^/([a-z]{2})(/|-)' | IGNORE="png|css|js|jpeg|jpg|svg|woff2" grep -vE "\.($IGNORE)$|\.($IGNORE)?"| sort -u > $TMP_PATH/fuzz.custom2.txt
+
+    export IGNORE="css|js|png|jpeg|jpg|gif|ico|svg|woff|woff2|ttf"
+    cat $urlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sort -u > $TMP_PATH/fuzz.custom1.txt
+    # cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | grep -vE '^/([a-z]{2})(/|-)' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sort -u > $TMP_PATH/fuzz.custom2.txt
+    cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
+    {
+        url = $0
+        n = split(url, paths, "/")
+        
+        key = paths[2] "-" length(url)
+        
+        count[key]++
+        if (count[key] <= 5)
+            print url
+    }' | sed 's/^\///g' | sort -u > $TMP_PATH/fuzz.custom2.txt
+
 
     cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
     cat $webFilteredFile | feroxbuster --stdin -r -k -a $USER_AGENT -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
