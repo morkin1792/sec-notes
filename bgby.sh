@@ -157,8 +157,8 @@ EOF
     # extracting subdomains from urls
     cat $urlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
 
-    # active recon
-    # zone transfer
+    active recon
+    zone transfer
     function zoneTransfer() {
         domain="${1:?missing domain}"
         for ns in $(host -t NS $domain | grep -o 'name server .*' | awk '{ print $3 }'); do
@@ -273,7 +273,8 @@ function webScanning() {
     webAllFile="${1:=web.all.txt}"
     webFilteredFile="${2:=web.filtered.txt}"
     urlsFile="${3:=urls.txt}"
-    
+    domainsFile="${4:=scope.txt}"
+
     # wordpress
     nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
@@ -299,36 +300,20 @@ function webScanning() {
     
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
 
-    # TODO: CONTENT DISCOVERY in webFilteredFile
+    ## content discovery ##
 
+    # getting wordlists
     curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
 
-    export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
-    cat $urlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sort -u > $TMP_PATH/fuzz.custom1.txt
-    # delete custom wordlist if it is too big
-    if [ $(wc -l < $TMP_PATH/fuzz.custom1.txt) -gt 15000 ]; then
-        rm $TMP_PATH/fuzz.custom1.txt
-    fi
-    # cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | grep -vE '^/([a-z]{2})(/|-)' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sort -u > $TMP_PATH/fuzz.custom2.txt
-    cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
-    {
-        url = $0
-        n = split(url, paths, "/")
-        
-        key = paths[2] "-" length(url)
-        
-        count[key]++
-        if (count[key] <= 5)
-            print url
-    }' | sed 's/^\///g' | sort -u > $TMP_PATH/fuzz.custom2.txt
-    # delete custom wordlist if it is too big
-    if [ $(wc -l < $TMP_PATH/fuzz.custom2.txt) -gt 15000 ]; then
-        rm $TMP_PATH/fuzz.custom2.txt
-    fi
-
+    # building custom wordlist
+    for host in $(cat $domainsFile); do
+        grep -iE "$host" $urlsFile > $TMP_PATH/urls.$(url2path $host).txt
+        buildCustomWordlist $TMP_PATH/urls.$(url2path $host).txt $TMP_PATH/fuzz.custom.$(url2path $host).txt
+        rm $TMP_PATH/urls.$(url2path $host).txt
+    done
 
     cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
-    cat $webFilteredFile | feroxbuster --stdin -r -k -a $USER_AGENT -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
+    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
 
     # TODO: extract URLS, choose some and then try more specific tools
     # extract URLs + parameters (+ methods): katana - OK 
@@ -364,15 +349,18 @@ function spidering() {
     spiderSubdomains=( $(grep -RP "^\[subdomains\]" spider | awk '{print $3}' | sed 's/http[s]\?...//' | sort -u) )    
     for sub in "${spiderSubdomains[@]}"; do
         if ! (grep -q "$sub" subdomains.all.txt); then
-            A=$(queryDNS A $sub)
-            # if there is A entry
-            if ! (nameNotFound "$A"); then
-                echo "[*] found new subdomain: $sub"
-                # TODO: instead of save, repeat the function 
+            # A=$(queryDNS A $sub)
+            # # if there is A entry
+            # if ! (nameNotFound "$A"); then
+            #     echo "[*] found new subdomain: $sub"
+                # TODO: instead of saving, repeat everything from compileSubdomains
                 echo $sub >> results/new.subdomains.txt
-            fi
+            # fi
         fi
     done
+
+    ## pentesting only
+    grep -iE 'http[s]?://[^/"\?]+' -aoh spider/* | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > spider.domains.txt
 
     # CHECKING JWT TOKENS
     grep -Eh -Roa "eyJ[^\"' ]{14,2048}" spider | urlDecode | sort -u > results/jwts.txt
@@ -467,7 +455,7 @@ function checkDomain() {
 }
 
 function getDomain() {
-    psl -b --print-reg-domain "$1"
+    psl -b --print-reg-domain -- "$1"
 }
 
 function filterWebUrls() {
@@ -503,4 +491,42 @@ function urlDecode() {
 
 function url2path() {
     echo $1 | sed 's/^http[s]\?...//' | sed 's/\//_/g'
+}
+
+function buildCustomWordlist() {
+    customUrlsFile="${1:?missing urls file}"
+    customWordlistFile="${2:?missing output file}"
+    
+    export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
+    cat $customUrlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sed 's/\/$//g' | sed '/^[;%\^\&]/d' | sort -u > $customWordlistFile".1"
+    # delete custom wordlist if it is too big
+    if [ $(wc -l < $customWordlistFile".1") -gt 5000 ]; then
+        rm $customWordlistFile".1"
+        >$customWordlistFile".1"
+    fi
+
+    cat $customUrlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\|ver\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
+    {
+        url = $0
+        n = split(url, paths, "/")
+        
+        key = paths[2] "-" length(substr(url, 0, index(url, "?")))
+        count[key]++
+
+        key2 = paths[2] "~~"
+        hasDoubleTilde = index(url, "~~") > 0
+        if (hasDoubleTilde) {
+            count[key2]++
+        }
+        if (count[key] <= 5 && (!hasDoubleTilde || count[key2] <= 4)) {
+            print url
+        }
+    }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&]/d' | sort -u > $customWordlistFile".2"
+    # delete custom wordlist if it is too big
+    if [ $(wc -l < $customWordlistFile".2") -gt 10000 ]; then
+        rm $customWordlistFile".2"
+        >$customWordlistFile".2"
+    fi
+    cat $customWordlistFile".1" $customWordlistFile".2" | sort -u > $customWordlistFile
+    rm $customWordlistFile".1" $customWordlistFile".2"
 }
