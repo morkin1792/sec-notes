@@ -155,7 +155,7 @@ EOF
     waymore -i $domainsFile -mode U -oU $TMP_PATH/waymore.output.txt
     cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.txt | sort -u > $urlsFile
     # extracting subdomains from urls
-    cat $urlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sort -u > subdomains/gau_waymore.txt
+    cat $urlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
 
     # active recon
     # zone transfer
@@ -305,6 +305,10 @@ function webScanning() {
 
     export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
     cat $urlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sort -u > $TMP_PATH/fuzz.custom1.txt
+    # delete custom wordlist if it is too big
+    if [ $(wc -l < $TMP_PATH/fuzz.custom1.txt) -gt 15000 ]; then
+        rm $TMP_PATH/fuzz.custom1.txt
+    fi
     # cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | grep -vE '^/([a-z]{2})(/|-)' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sort -u > $TMP_PATH/fuzz.custom2.txt
     cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
     {
@@ -317,6 +321,10 @@ function webScanning() {
         if (count[key] <= 5)
             print url
     }' | sed 's/^\///g' | sort -u > $TMP_PATH/fuzz.custom2.txt
+    # delete custom wordlist if it is too big
+    if [ $(wc -l < $TMP_PATH/fuzz.custom2.txt) -gt 15000 ]; then
+        rm $TMP_PATH/fuzz.custom2.txt
+    fi
 
 
     cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
