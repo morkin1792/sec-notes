@@ -259,8 +259,7 @@ function analyzeReconResults() {
     httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l <(cat $hostsFile | awk -F, '{print $2}') -json -o web.all.json
     jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
     filterWebUrls $webAllFile
-    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|tostring)' web.all.json | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
-    filterWebUrls $webFilteredFile
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|tostring)' web.all.json | sort -ur | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
 
     # GETTING WEB SCREENSHOTS
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
