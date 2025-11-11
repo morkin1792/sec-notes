@@ -18,7 +18,8 @@ SHODAN_API_KEY="..."
 INTELX_API_KEY="..."
 # ? https://wpscan.com/api
 WPSCAN_API_KEY="..."
-
+# https://urlscan.io/user/apikey/new/
+URL_SCAN_API_KEY="..."
 
 
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
@@ -28,16 +29,24 @@ OKGREEN='\033[92m'
 WARNING='\033[93m'
 ENDC='\033[0m'
 
+if [ -z $ZSH_VERSION ]; then
+    printf "$(hostname): Oops, this script requires zsh! \n$(whoami): Why?\n$(hostname): Well... because it is annoying to support a lot of different shells, and I like zsh :) \n$(whoami): You convinced me, how can I install zsh? \n$(hostname): 'pacman -S zsh' or 'apt install zsh', but you have to customize it also (check: https://itsfoss.com/zsh-ubuntu/ and https://github.com/morkin1792/mylinux/blob/master/zsh/zshrc). Otherwise, you will not understand! \n"
+    # you can comment the following line if you want to use another shell, but I will not support it :)
+    return 1
+fi
+
 echo Using $TMP_PATH as temporary space
 
 
+cat <<EOF
 logAndCall discoverSubdomains
 logAndCall compileSubdomains
 logAndCall analyzeReconResults
 logAndCall webScanning
 logAndCall spidering
 logAndCall quickPortScanning
-# logAndCall portScanning # requires sudo
+logAndCall portScanning # requires sudo
+EOF
 
 
 
@@ -64,10 +73,12 @@ function checkRequirements() {
         'subzy'             # go install -v github.com/PentestPad/subzy@latest
         'hashcat'           # pacman -S hashcat || apt install hashcat
         'nmap'              # pacman -S nmap || apt install nmap
-        'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
         'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && sudo gem install wpscan)
+        'gau'               # go install github.com/lc/gau/v2/cmd/gau@latest
+        'waymore'           # pip install waymore
     )
+    # 'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
     # 's3scanner'         # go install -v github.com/sa7mon/s3scanner@latest
     # dalfox # go install github.com/hahwul/dalfox/v2@latest
 
@@ -78,10 +89,12 @@ function checkRequirements() {
         fi
     done
 }
+checkRequirements
 
 function discoverSubdomains() {
     domainsFile="${1:=scope.txt}"
     subdomainsFile="${2:=subdomains.all.txt}"
+    urlsFile="${3:=urls.txt}"
 
     # passive recon
     function checkCrt() {
@@ -117,7 +130,34 @@ EOF
 
     # TODO: more api keys https://docs.google.com/spreadsheets/d/19lns4DUmCts1VXIhmC6x-HaWgNT7vWLH0N68srxS7bI/edit?gid=0#gid=0
     # https://sidxparab.gitbook.io/subdomain-enumeration-guide/introduction/prequisites
+    cat << EOF >$TMP_PATH/gau.toml
+threads = 2
+verbose = false
+retries = 15
+subdomains = true
+parameters = false
+providers = ["wayback","commoncrawl","otx","urlscan"]
+blacklist = []
+json = false
 
+[urlscan]
+  apikey = "$URL_SCAN_API_KEY"
+
+[filters]
+  from = ""
+  to = ""
+  matchstatuscodes = []
+  matchmimetypes = []
+  filterstatuscodes = []
+  filtermimetypes = ["image/png", "image/jpg", "image/svg+xml"]
+EOF
+    cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt 
+    waymore -i $domainsFile -mode U -oU $TMP_PATH/waymore.output.txt
+    cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.txt | sort -u > $urlsFile
+    # extracting subdomains from urls
+    cat $urlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sort -u > subdomains/gau_waymore.txt
+
+    # active recon
     # zone transfer
     function zoneTransfer() {
         domain="${1:?missing domain}"
@@ -232,6 +272,7 @@ function analyzeReconResults() {
 function webScanning() {
     webAllFile="${1:=web.all.txt}"
     webFilteredFile="${2:=web.filtered.txt}"
+    urlsFile="${3:=urls.txt}"
     
     # wordpress
     nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
@@ -259,7 +300,14 @@ function webScanning() {
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
 
     # TODO: CONTENT DISCOVERY in webFilteredFile
-    
+
+    curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
+    cat $urlsFile | awk -F/ '{print $4}' | IGNORE="png|css|js|jpeg|jpg|svg|woff2" grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sort -u > $TMP_PATH/fuzz.custom1.txt
+    cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | grep -vE '^/([a-z]{2})(/|-)' | IGNORE="png|css|js|jpeg|jpg|svg|woff2" grep -vE "\.($IGNORE)$|\.($IGNORE)?"| sort -u > $TMP_PATH/fuzz.custom2.txt
+
+    cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
+    cat $webFilteredFile | feroxbuster --stdin -r -k -a $USER_AGENT -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
+
     # TODO: extract URLS, choose some and then try more specific tools
     # extract URLs + parameters (+ methods): katana - OK 
     # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
