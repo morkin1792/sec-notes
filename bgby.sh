@@ -219,9 +219,10 @@ function compileSubdomains() {
 function analyzeReconResults() {
     subdomainsFile="${1:=subdomains.all.txt}"
     hostsFile="${2:=hosts.csv}"
-    outputWebAllFile="${3:=web.all.txt}"
-    outputWebFile="${4:=web.filtered.txt}"
-    outputIpsFile="${5:=ips.txt}"
+    # output files
+    webAllFile="${3:=web.all.txt}"
+    webFilteredFile="${4:=web.filtered.txt}"
+    ipsFile="${5:=ips.txt}"
 
     # TAKEOVER
     function checkTakeover() {
@@ -256,16 +257,16 @@ function analyzeReconResults() {
 
     # GETTING WEB HOSTS
     httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l <(cat $hostsFile | awk -F, '{print $2}') -json -o web.all.json
-    jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $outputWebAllFile
-    filterWebUrls $outputWebAllFile
-    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.lines|tostring) + "," + (.words|tostring)' web.all.json | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $outputWebFile
-    filterWebUrls $outputWebFile
+    jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
+    filterWebUrls $webAllFile
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|tostring)' web.all.json | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
+    filterWebUrls $webFilteredFile
 
     # GETTING WEB SCREENSHOTS
-    mkdir -p gowitness; cd $_; gowitness scan file -f ../$outputWebAllFile --write-db; cd ..
+    mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
-    cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > $outputIpsFile
+    cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > $ipsFile
 
 }
 
@@ -303,7 +304,7 @@ function webScanning() {
 
     curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
 
-    export IGNORE="css|js|png|jpeg|jpg|gif|ico|svg|woff|woff2|ttf"
+    export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
     cat $urlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sort -u > $TMP_PATH/fuzz.custom1.txt
     # cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | grep -vE '^/([a-z]{2})(/|-)' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sort -u > $TMP_PATH/fuzz.custom2.txt
     cat $urlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
