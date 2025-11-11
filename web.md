@@ -67,7 +67,7 @@
 - ?using session token
 ##### feroxbuster
 * `cat web.txt | feroxbuster --stdin -r -k -a $USER_AGENT -n --collect-words --json -w wordlist.txt -o feroxbuster.results.json #--resume-from`
-* `cat feroxbuster.results.json | jq 'select (.status == 200) | select (.path | test("\\.(js|css|png|ico)$") | not)' | jq -s 'group_by([.word_count, (.original_url | (split("/") | .[:3] | join("/"))) ]) | map(select(length<=5)) | flatten | sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","status","content_length","word_count"}' -C | less -R`
+* `cat feroxbuster.results.json | jq 'select (.status >= 200 and .status < 400) | select (.path | test("\\.(js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf)$") | not)' | jq -s 'group_by([.word_count, .content_length, (.original_url | (split("/") | .[:3] | join("/"))) ]) | map(select(length<=5)) | flatten | sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","status","content_length","word_count"}' -C | less -R`
 ##### ffuf
 - `for url in $(cat web.txt); do ffuf -H 'User-Agent: x' -r -c -recursion -recursion-depth 5 -w ../wordlist.txt -u $url/FUZZ -o "$(echo $url | sed 's/^http[s]\?...//' | sed 's/\///g')".ffuf.json ; done`
 - `cat site.ffuf.json | jq '.results | sort_by(.length) | .[]' | jq -C '{"length","status","words","lines","content-type","url"} | select (.status != 403)' | less -R`
