@@ -4,50 +4,22 @@
 ######## SETTINGS ########
 ##########################
 
-## TODO: Move secrets to external config
-
-# https://github.com/settings/personal-access-tokens
-GITHUB_API_KEY="github..."
-# https://cloud.projectdiscovery.io/?ref=api_key
-PDCP_API_KEY="..."
-# https://securitytrails.com/app/account/credentials
-SECURITY_TRAILS_API_KEY="..."
-# https://account.shodan.io/
-SHODAN_API_KEY="..."
-# https://intelx.io/account?tab=developer
-INTELX_API_KEY="..."
-# ? https://wpscan.com/api
-WPSCAN_API_KEY="..."
-# https://urlscan.io/user/apikey/new/
-URL_SCAN_API_KEY="..."
-
-
-USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 DNS_SERVER="1.1.1.1"
+CONFIG_FILE="$HOME/.bgby.env"
 TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ --suffix=".bgby")
+
+
+# TODO: improve output, and then use colors
 OKGREEN='\033[92m'
 WARNING='\033[93m'
 ENDC='\033[0m'
 
 if [ -z $ZSH_VERSION ]; then
-    printf "$(hostname): Oops, this script requires zsh! \n$(whoami): Why?\n$(hostname): Well... because it is annoying to support a lot of different shells, and I like zsh :) \n$(whoami): You convinced me, how can I install zsh? \n$(hostname): 'pacman -S zsh' or 'apt install zsh', but you have to customize it also (check: https://itsfoss.com/zsh-ubuntu/ and https://github.com/morkin1792/mylinux/blob/master/zsh/zshrc). Otherwise, you will not understand! \n"
+    printf "$(hostname): Oops, this script requires zsh! \n$(whoami): Why?\n$(hostname): Well... because it is annoying to support a lot of different shells, and I use zsh :) \n$(whoami): You convinced me, how can I install zsh? \n$(hostname): 'pacman -S zsh' or 'apt install zsh', but you have to customize it also (check: https://itsfoss.com/zsh-ubuntu/ and https://github.com/morkin1792/mylinux/blob/master/zsh/zshrc). Otherwise, you will hate it! \n"
     # you can comment the following line if you want to use another shell, but I will not support it :)
-    return 1
+    exit 1
 fi
-
-echo Using $TMP_PATH as temporary space
-
-
-cat <<EOF
-logAndCall discoverSubdomains
-logAndCall compileSubdomains
-logAndCall analyzeReconResults
-logAndCall webScanning
-logAndCall spidering
-logAndCall quickPortScanning
-logAndCall portScanning # requires sudo
-EOF
-
 
 
 #########################
@@ -89,7 +61,64 @@ function checkRequirements() {
         fi
     done
 }
+
+function checkApiKeysFile() {
+    local file="$1"
+
+    if [ ! -f "$file" ]; then
+        local template='
+## https://github.com/settings/personal-access-tokens > Fine-grained personal access tokens
+GITHUB_API_KEY="github..."
+
+## https://cloud.projectdiscovery.io/settings/api-key
+PDCP_API_KEY=""
+
+## https://securitytrails.com/app/account/credentials
+SECURITY_TRAILS_API_KEY=""
+
+## https://account.shodan.io/ > click "Show"
+SHODAN_API_KEY=""
+
+## https://intelx.io/account?tab=developer
+INTELX_API_KEY=""
+
+## https://wpscan.com/profile/
+WPSCAN_API_KEY=""
+
+## https://urlscan.io/user/profile/
+URL_SCAN_API_KEY=""
+
+'
+        printf "%s\n" "$template" > "$file"
+        chmod 600 "$file"
+        echo "[*] Created api key config template: $file"
+    fi
+    # loading api keys
+    source "$CONFIG_FILE"
+
+    # checking api keys
+    if [ -z "$GITHUB_API_KEY" ] || [ -z "$PDCP_API_KEY" ] || [ -z "$SECURITY_TRAILS_API_KEY" ] || [ -z "$SHODAN_API_KEY" ] || [ -z "$INTELX_API_KEY" ] || [ -z "$WPSCAN_API_KEY" ] || [ -z "$URL_SCAN_API_KEY" ]; then
+        echo "[-] To have better results, I really recommend you to fill in all API keys in $file"
+        # read "choice?[*] Do you want to exit now to fill the file? (Y/n): "
+        # if [[ "$choice" != "n" && "$choice" != "N" ]]; then
+        #     exit 1
+        # fi
+    fi
+}
 checkRequirements
+checkApiKeysFile "$CONFIG_FILE"
+
+echo Using $TMP_PATH as temporary space
+
+cat <<EOF
+logAndCall discoverSubdomains
+logAndCall compileSubdomains
+logAndCall analyzeReconResults
+logAndCall webScanning
+logAndCall spidering
+logAndCall quickPortScanning
+logAndCall portScanning # requires sudo
+EOF
 
 function discoverSubdomains() {
     domainsFile="${1:=scope.txt}"
@@ -109,7 +138,7 @@ function discoverSubdomains() {
     done
     cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
     #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
-    cat <<EOF >$TMP_PATH/provider-config.yaml
+    local provider_config="
 securitytrails:
   - $SECURITY_TRAILS_API_KEY
 github:
@@ -120,7 +149,9 @@ shodan:
   - $SHODAN_API_KEY
 intelx:
   - $INTELX_API_KEY
-EOF
+"
+    printf "%s\n" "$provider_config" > "$TMP_PATH/provider-config.yaml"
+    chmod 600 "$TMP_PATH/provider-config.yaml"
 
     subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -o subdomains/subfinder.$(date +"%s").txt
     export PDCP_API_KEY
@@ -130,27 +161,30 @@ EOF
 
     # TODO: more api keys https://docs.google.com/spreadsheets/d/19lns4DUmCts1VXIhmC6x-HaWgNT7vWLH0N68srxS7bI/edit?gid=0#gid=0
     # https://sidxparab.gitbook.io/subdomain-enumeration-guide/introduction/prequisites
-    cat << EOF >$TMP_PATH/gau.toml
+    local gau_config="
 threads = 2
 verbose = false
 retries = 15
 subdomains = true
 parameters = false
-providers = ["wayback","commoncrawl","otx","urlscan"]
+providers = [\"wayback\",\"commoncrawl\",\"otx\",\"urlscan\"]
 blacklist = []
 json = false
 
 [urlscan]
-  apikey = "$URL_SCAN_API_KEY"
+  apikey = \"$URL_SCAN_API_KEY\"
 
 [filters]
-  from = ""
-  to = ""
+  from = \"\"
+  to = \"\"
   matchstatuscodes = []
   matchmimetypes = []
   filterstatuscodes = []
-  filtermimetypes = ["image/png", "image/jpg", "image/svg+xml"]
-EOF
+  filtermimetypes = [\"image/png\", \"image/jpg\", \"image/svg+xml\"]
+"
+    printf "%s\n" "$gau_config" > "$TMP_PATH/gau.toml"
+    chmod 600 "$TMP_PATH/gau.toml"
+
     cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt 
     waymore -i $domainsFile -mode U -oU $TMP_PATH/waymore.output.txt
     cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.txt | sort -u > $urlsFile
