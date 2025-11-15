@@ -91,8 +91,15 @@ cat github.json | jq 'select (
 ## Information Gathering - Finding Attack Surfaces
 
 ### getting seeds (initial domains)
-* navigate through the main website (who are we, foot pages)
-* spidering: `httpx -l scope.txt | gospider -u web -d 3 -R | grep -iE 'http[s]?://[^/"]*' -o | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter' | sort -u`
+* manual checking the main website (who are we, foot pages)
+* search for similar domains:
+   - https://crt.sh/?q=TARGET
+   - https://search.dnslytics.com/search?q=name:+\*TARGET\*&d=domains
+   - https://securitytrails.com/list/keyword/TARGET
+* spidering:
+    - `httpx -l scope.txt | gospider -u web -d 3 -R | grep -iE 'http[s]?://[^/"]*' -o | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter' | sort -u`
+    - `httpx -l scope.txt | katana -H 'User-Agent: $USER_AGENT' -sc -do -fs dn -o katana.txt`
+    - `cat katana.txt | awk -F/ '{ print $3 }' | sed 's/www\.//' | grep -vE 'facebook|google|youtube|instagram|twitter|gupy\.io|tiktok|apple\.com' | sort -u` 
 * `"target.com" -site:target.com`
 * search relations: https://builtwith.com/relationships/TARGET.COM
 * search for registrants:
@@ -101,6 +108,7 @@ cat github.json | jq 'select (
     * registrant email in search engines
     * https://viewdns.info/reversewhois/
     * security trails (soa records)
+
 
 #### extra
 * ?`amass intel -d target -whois`
@@ -138,12 +146,13 @@ cat github.json | jq 'select (
    * `host -t AXFR example.com ns2.example.com`
 * `dnsrecon -d example.com -t axfr`
 
-### finding ips and ASNS
+### finding ASNs
+- https://bgp.he.net/
+- https://bgp.tools/
+
+### finding more ips
 - search.censys.io (validating: `openssl s_client -showcerts -connect $ip:443  <<< "Q"`)
 - shodan.io/search?query=example.com
-- https://bgp.he.net/
-- https://bgpview.io/
-- enumerating asn: `amass intel -asn $ASN_NUMBER`
 - ip address history
     - https://securitytrails.com/domain/example.com/history/a
     - https://viewdns.info/iphistory/?domain=example.com
