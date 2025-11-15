@@ -92,23 +92,22 @@ cat github.json | jq 'select (
 
 ### getting seeds (initial domains)
 * manual checking the main website (who are we, foot pages)
+* check others using the same TLS cert: https://crt.sh/?q=TARGET
 * search for similar domains:
-   - https://crt.sh/?q=TARGET
    - https://search.dnslytics.com/search?q=name:+\*TARGET\*&d=domains
-   - https://securitytrails.com/list/keyword/TARGET
+* search for registrants:
+    * nic-hdl-br in https://reverse-whois.whoisxmlapi.com/
+    * domain in https://search.dnslytics.com/domain/TARGET.COM
+    * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
+        * `dnsx -resp -ns -silent -no-color -l scope.txt | awk '{print $3}' | sed 's/^\[//' | sed 's/\]$//' | sort -u | grep -vE 'awsdns|cloudflare|domaincontrol|oraclecloud|kinghost|worldnic|akam\.net|dns\.br|windstream'`
+    * https://viewdns.info/reversewhois/
+    * security trails (soa records)
 * spidering:
     - `httpx -l scope.txt | gospider -u web -d 3 -R | grep -iE 'http[s]?://[^/"]*' -o | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter' | sort -u`
     - `httpx -l scope.txt | katana -H 'User-Agent: $USER_AGENT' -sc -do -fs dn -o katana.txt`
     - `cat katana.txt | awk -F/ '{ print $3 }' | sed 's/www\.//' | grep -vE 'facebook|google|youtube|instagram|twitter|gupy\.io|tiktok|apple\.com' | sort -u` 
 * `"target.com" -site:target.com`
 * search relations: https://builtwith.com/relationships/TARGET.COM
-* search for registrants:
-    * domain in https://search.dnslytics.com/domain/TARGET.COM
-    * nserver in https://search.dnslytics.com/search?d=domains&q=ns:ns.target.com
-    * registrant email in search engines
-    * https://viewdns.info/reversewhois/
-    * security trails (soa records)
-
 
 #### extra
 * ?`amass intel -d target -whois`
