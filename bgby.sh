@@ -113,17 +113,18 @@ checkConfigFile "$CONFIG_FILE"
 echo Using $TMP_PATH as temporary space
 
 cat <<EOF
-logAndCall discoverSubdomains
-logAndCall compileSubdomains
-logAndCall analyzeReconResults
+logAndCall subdomainDiscovery
+logAndCall subdomainCompilation
+logAndCall reconAnalysis
 logAndCall vulnScanning
 logAndCall spidering
-
+# logAndCall customVulnScanning
+# logAndCall contentDiscovery
 logAndCall quickPortScanning
 logAndCall portScanning # requires sudo
 EOF
 
-function discoverSubdomains() {
+function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     passiveUrlsFile="${2:=urls.passive.txt}"
     subdomainsFile="${3:=subdomains.all.txt}"
@@ -255,7 +256,7 @@ function activeSubdomainDiscovery() {
     done
 }
 
-function compileSubdomains() {
+function subdomainCompilation() {
     subdomainsFile="${1:=subdomains.all.txt}"
     resultsFile="${2:=hosts.csv}"
 
@@ -280,7 +281,7 @@ function compileSubdomains() {
     # xdg-open $resultsFile
 }
 
-function analyzeReconResults() {
+function reconAnalysis() {
     subdomainsFile="${1:=subdomains.all.txt}"
     hostsFile="${2:=hosts.csv}"
     # output files
@@ -387,7 +388,7 @@ function spidering() {
             # # if there is A entry
             # if ! (nameNotFound "$A"); then
             #     echo "[*] found new subdomain: $sub"
-                # TODO: instead of saving, repeat everything from compileSubdomains
+                # TODO: instead of saving, repeat everything from subdomainCompilation
                 echo $sub >> results/subdomains.new.txt
             # fi
         fi
