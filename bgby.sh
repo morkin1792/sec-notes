@@ -260,8 +260,8 @@ function subdomainCompilation() {
     subdomainsFile="${1:=subdomains.all.txt}"
     resultsFile="${2:=hosts.csv}"
 
-    cat $subdomainsFile | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)}' > $TMP_PATH/hosts.cdn.txt
     cat $subdomainsFile | dnsx -a -aaaa -resp -silent -no-color | awk '!seen[$1]++ {print $1, substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.dnsx.txt
+    cat $TMP_PATH/hosts.dnsx.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
     cat $TMP_PATH/hosts.dnsx.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr | awk '{print $1, substr($3,2,length($3)-2)}' > $TMP_PATH/hosts.ptr.txt
 
     IFS=$'\n'
@@ -270,7 +270,7 @@ function subdomainCompilation() {
         ip=$(echo $subdomainAndIp | cut -d' ' -f2)
         domain=$(getDomain $subdomain)
         ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
-        cdn=$(grep "^$subdomain " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
+        cdn=$(grep "^$ip " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
         line="$domain,$subdomain,$ip,$ptr,$cdn"
         echo $line >> $resultsFile
     done; unset IFS
