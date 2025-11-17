@@ -1,30 +1,14 @@
 #!/bin/zsh
 
-##########################
-######## SETTINGS ########
-##########################
+# TODO: avoid loading big files at once in memory
 
-USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
-DNS_SERVER="1.1.1.1"
-CONFIG_FILE="$HOME/.bgby.env"
-TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ --suffix=".bgby")
-
-
-# TODO: improve output, and then use colors
-OKGREEN='\033[92m'
-WARNING='\033[93m'
-ENDC='\033[0m'
+CONFIG_FILE="$HOME/.bgby.cfg"
 
 if [ -z $ZSH_VERSION ]; then
     printf "$(hostname): Oops, this script requires zsh! \n$(whoami): Why?\n$(hostname): Well... because it is annoying to support a lot of different shells, and I use zsh :) \n$(whoami): You convinced me, how can I install zsh? \n$(hostname): 'pacman -S zsh' or 'apt install zsh', but you have to customize it also (check: https://itsfoss.com/zsh-ubuntu/ and https://github.com/morkin1792/mylinux/blob/master/zsh/zshrc). Otherwise, you will hate it! \n"
     # you can comment the following line if you want to use another shell, but I will not support it :)
     exit 1
 fi
-
-
-#########################
-####### FUNCTIONS #######
-#########################
 
 function checkRequirements() {
     requiredCommands=(
@@ -62,11 +46,18 @@ function checkRequirements() {
     done
 }
 
-function checkApiKeysFile() {
+function checkConfigFile() {
     local file="$1"
 
     if [ ! -f "$file" ]; then
-        local template='
+        local template='# bgby config file
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
+# DNS_SERVER="1.1.1.1"
+# TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M")_XXXXXXXX)
+
+
+# fill in the API keys below
+
 ## https://github.com/settings/personal-access-tokens > Fine-grained personal access tokens
 GITHUB_API_KEY="github..."
 
@@ -91,14 +82,25 @@ URL_SCAN_API_KEY=""
 '
         printf "%s\n" "$template" > "$file"
         chmod 600 "$file"
-        echo "[*] Created api key config template: $file"
+        echo "[*] Created config file: $file"
     fi
-    # loading api keys
+    # loading configs
     source "$CONFIG_FILE"
+
+    # setting default values if not defined
+    if [ -z "$USER_AGENT" ]; then
+        USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
+    fi
+    if [ -z "$DNS_SERVER" ]; then
+        DNS_SERVER="1.1.1.1"
+    fi
+    if [ -z "$TMP_PATH" ]; then
+        TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M")_XXXXXXXX)
+    fi
 
     # checking api keys
     if [ -z "$GITHUB_API_KEY" ] || [ -z "$PDCP_API_KEY" ] || [ -z "$SECURITY_TRAILS_API_KEY" ] || [ -z "$SHODAN_API_KEY" ] || [ -z "$INTELX_API_KEY" ] || [ -z "$WPSCAN_API_KEY" ] || [ -z "$URL_SCAN_API_KEY" ]; then
-        echo "[-] To have better results, I really recommend you to fill in all API keys in $file"
+        echo "[-] To have better results, it is IMPORTANT to fill in all API keys in $file"
         # read "choice?[*] Do you want to exit now to fill the file? (Y/n): "
         # if [[ "$choice" != "n" && "$choice" != "N" ]]; then
         #     exit 1
@@ -106,7 +108,7 @@ URL_SCAN_API_KEY=""
     fi
 }
 checkRequirements
-checkApiKeysFile "$CONFIG_FILE"
+checkConfigFile "$CONFIG_FILE"
 
 echo Using $TMP_PATH as temporary space
 
@@ -114,21 +116,31 @@ cat <<EOF
 logAndCall discoverSubdomains
 logAndCall compileSubdomains
 logAndCall analyzeReconResults
-logAndCall webScanning
+logAndCall vulnScanning
 logAndCall spidering
+
 logAndCall quickPortScanning
 logAndCall portScanning # requires sudo
 EOF
 
 function discoverSubdomains() {
     domainsFile="${1:=scope.txt}"
-    subdomainsFile="${2:=subdomains.all.txt}"
-    urlsFile="${3:=urls.txt}"
+    passiveUrlsFile="${2:=urls.passive.txt}"
+    subdomainsFile="${3:=subdomains.all.txt}"
 
+    passiveSubdomainDiscovery $domainsFile $passiveUrlsFile
+    activeSubdomainDiscovery $domainsFile
+    # merge all subdomains
+    cat subdomains/* | sed 's/^[.-]//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
+}
+
+function passiveSubdomainDiscovery() {
+    domainsFile="${1:=scope.txt}"
+    passiveUrlsFile="${2:=urls.passive.txt}"
     # passive recon
     function checkCrt() {
         domain="${1:?missing domain}"
-        curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $USER_AGENT" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sed 's/^\*[.]//g' | sort -u
+        curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $USER_AGENT" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sort -u
     }
     mkdir -p subdomains
     for domain in $(cat $domainsFile); do
@@ -136,8 +148,12 @@ function discoverSubdomains() {
         export GITHUB_TOKEN=$GITHUB_API_KEY
         github-subdomains -d $domain -o subdomains/github.$domain.txt >> $TMP_PATH/github-subdomains.output.txt
     done
+    grep '^*.' subdomains/crt.txt | sed 's/^*.//' | sort -u > subdomains/crt.tls.wildcard.txt
+    sed -i 's/^*.//' subdomains/crt.txt
+
     cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
     #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
+    
     local provider_config="
 securitytrails:
   - $SECURITY_TRAILS_API_KEY
@@ -156,7 +172,7 @@ intelx:
     subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -o subdomains/subfinder.$(date +"%s").txt
     export PDCP_API_KEY
     chaos -dL $domainsFile -o subdomains/chaos.txt
-    grep '^*.' subdomains/chaos.txt | sed 's/^*.//' | sort -u > subdomains/chaos.wildcard.txt
+    grep '^*.' subdomains/chaos.txt | sed 's/^*.//' | sort -u > subdomains/chaos.tls.wildcard.txt
     sed -i 's/^*.//' subdomains/chaos.txt
 
     # TODO: more api keys https://docs.google.com/spreadsheets/d/19lns4DUmCts1VXIhmC6x-HaWgNT7vWLH0N68srxS7bI/edit?gid=0#gid=0
@@ -185,14 +201,17 @@ json = false
     printf "%s\n" "$gau_config" > "$TMP_PATH/gau.toml"
     chmod 600 "$TMP_PATH/gau.toml"
 
+    # passive url gathering
     cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt 
     waymore -i $domainsFile -mode U -oU $TMP_PATH/waymore.output.txt
-    cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.txt | sort -u > $urlsFile
+    cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.txt | sort -u > $passiveUrlsFile
     # extracting subdomains from urls
-    cat $urlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
+    cat $passiveUrlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
+}
 
-    active recon
-    zone transfer
+function activeSubdomainDiscovery() {
+    domainsFile="${1:=scope.txt}"
+
     function zoneTransfer() {
         domain="${1:?missing domain}"
         for ns in $(host -t NS $domain | grep -o 'name server .*' | awk '{ print $3 }'); do
@@ -204,15 +223,29 @@ json = false
         zoneTransfer $ztTarget >> subdomains/zonetransfer.txt
     done
 
-    # bruteforce
-    curl -o $TMP_PATH/subdomains-top1million-110000.txt 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/subdomains-top1million-110000.txt'
-    curl -o $TMP_PATH/n0kovo_subdomains_small.txt 'https://raw.githubusercontent.com/n0kovo/n0kovo_subdomains/refs/heads/main/n0kovo_subdomains_small.txt'
-    cat $TMP_PATH/subdomains-top1million-110000.txt $TMP_PATH/n0kovo_subdomains_small.txt | sort -u > $TMP_PATH/subdomain.list.txt
+    # getting dns wordlist
+    curl -o $TMP_PATH/services-names.txt -L 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/services-names.txt'
+    curl -o $TMP_PATH/subdomains-top1million-110000.txt -L 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/subdomains-top1million-110000.txt'
+    curl -o $TMP_PATH/n0kovo_subdomains_small.txt -L 'https://raw.githubusercontent.com/n0kovo/n0kovo_subdomains/refs/heads/main/n0kovo_subdomains_small.txt'
+    cat $TMP_PATH/services-names.txt $TMP_PATH/subdomains-top1million-110000.txt $TMP_PATH/n0kovo_subdomains_small.txt | sort -u > $TMP_PATH/subdomain.list.txt
+
+    # getting dns resolvers
     curl -L https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt -o $TMP_PATH/resolvers.txt
-    
-    # TODO: treat case where wildcard file is huge
-    # TODO: remove all cases that resolve anything
-    for domain in $(cat $domainsFile <(echo) subdomains/chaos.wildcard.txt | sort -u); do
+
+    # preparing dns targets
+    cat $domainsFile > $TMP_PATH/brute.dns.potential.txt
+    echo >> $TMP_PATH/brute.dns.potential.txt
+    cat subdomains/*.tls.wildcard.txt >> $TMP_PATH/brute.dns.potential.txt
+
+    # removing crazy dns wildcards
+    awk '!seen[$0]++' $TMP_PATH/brute.dns.potential.txt > $TMP_PATH/brute.dns.potential.uniq.txt 
+    sed -i 's/^/nonexist.iuygfcvbnjk./' $TMP_PATH/brute.dns.potential.uniq.txt
+    dnsx -a -silent -no-color -l $TMP_PATH/brute.dns.potential.uniq.txt -o $TMP_PATH/brute.dns.removed.txt
+    awk -F, 'NR==FNR { keys[$0]; next } !($1 in keys)' $TMP_PATH/brute.dns.removed.txt  $TMP_PATH/brute.dns.potential.uniq.txt >  $TMP_PATH/brute.dns.targets.txt
+    sed -i 's/^nonexist.iuygfcvbnjk\.//' $TMP_PATH/brute.dns.targets.txt
+
+    # bruting dns targets
+    for domain in $(cat $TMP_PATH/brute.dns.targets.txt); do
         shuffledns -d $domain -w $TMP_PATH/subdomain.list.txt -r $TMP_PATH/resolvers.txt -mode bruteforce -t 1000 -o $TMP_PATH/brute.$domain.txt
         # removing false positives lines from shuffledns output
         grep -i "$domain" $TMP_PATH/brute.$domain.txt > subdomains/brute.$domain.txt
@@ -220,9 +253,6 @@ json = false
         # removing some \x00 (null) characters from shuffledns output
         sed -i 's/\x00//g' subdomains/brute.$domain.txt
     done
-
-    # merge all subdomains
-    cat subdomains/* | sed 's/^[.-]//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
 }
 
 function compileSubdomains() {
@@ -259,6 +289,11 @@ function analyzeReconResults() {
     ipsFile="${5:=ips.txt}"
 
     # TAKEOVER
+    # TODO: rework checkTakeover, consider using dnsx to get all available domains at once
+    OKGREEN='\033[92m'
+    WARNING='\033[93m'
+    ENDC='\033[0m'
+
     function checkTakeover() {
         host="$1"
         CNAME=$(queryDNS CNAME $host)
@@ -303,11 +338,9 @@ function analyzeReconResults() {
 
 }
 
-function webScanning() {
+function vulnScanning() {
     webAllFile="${1:=web.all.txt}"
     webFilteredFile="${2:=web.filtered.txt}"
-    urlsFile="${3:=urls.txt}"
-    domainsFile="${4:=scope.txt}"
 
     # wordpress
     nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
@@ -333,39 +366,6 @@ function webScanning() {
         -t http/takeovers
     
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
-
-    ## content discovery ##
-
-    # getting wordlists
-    curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
-
-    # building custom wordlist
-    for host in $(cat $domainsFile); do
-        grep -iE "$host" $urlsFile > $TMP_PATH/urls.$(url2path $host).txt
-        buildCustomWordlist $TMP_PATH/urls.$(url2path $host).txt $TMP_PATH/fuzz.custom.$(url2path $host).txt
-        rm $TMP_PATH/urls.$(url2path $host).txt
-    done
-
-    cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
-    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
-
-    # TODO: extract URLS, choose some and then try more specific tools
-    # extract URLs + parameters (+ methods): katana - OK 
-    # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
-    # https://github.com/morkin1792/sec-notes/blob/8007e2b6a08811c4d445916ae23355d0d7335ba7/web.md#content-discovery
-    
-    # choosing urls:
-    #    - preprocessing (removing static files, tracking parameters, parameter blacklist)
-    #    - maybe manually requesting (checking for reflection, sql error)
-    #    - ?llama, gpt4all
-    
-    # running
-    # - sqlmap, dalfox, XSStrike
-    # - dt: ?
-    # - ssti: ?gossti, ?SSTImap
-    # - ?ssrf: ?SSRFmap
-    # - ?ci: commix
-    # - https://github.com/topics/VULN
 }
 
 function spidering() {
@@ -388,13 +388,13 @@ function spidering() {
             # if ! (nameNotFound "$A"); then
             #     echo "[*] found new subdomain: $sub"
                 # TODO: instead of saving, repeat everything from compileSubdomains
-                echo $sub >> results/new.subdomains.txt
+                echo $sub >> results/subdomains.new.txt
             # fi
         fi
     done
 
     ## pentesting only
-    grep -iE 'http[s]?://[^/"\?]+' -aoh spider/* | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > spider.domains.txt
+    grep -iE 'http[s]?://[^/"\?]+' -aoh spider/* | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > results/seeds.potential.txt
 
     # CHECKING JWT TOKENS
     grep -Eh -Roa "eyJ[^\"' ]{14,2048}" spider | urlDecode | sort -u > results/jwts.txt
@@ -408,11 +408,50 @@ function spidering() {
         curl -LO https://raw.githubusercontent.com/wallarm/jwt-secrets/refs/heads/master/jwt.secrets.list 
         cat $TMP_PATH/passwords/* | sort -u > $TMP_PATH/secrets.txt
     )
-    hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/hashcat.jwts.txt
+    hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/jwts.cracked.txt
     #hashcat results/jwts.txt --show
     
     # TODO: more analysis and regex. maybe using another tools
     # TODO: check cognito 
+}
+
+function customVulnScanning() {
+    # TODO: extract URLS, choose some and then try more specific tools
+    # extract URLs + parameters (+ methods): katana - OK 
+    # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
+    # https://github.com/morkin1792/sec-notes/blob/8007e2b6a08811c4d445916ae23355d0d7335ba7/web.md#content-discovery
+    
+    # choosing urls:
+    #    - preprocessing (removing static files, tracking parameters, parameter blacklist)
+    #    - maybe manually requesting (checking for reflection, sql error)
+    #    - ?llama, gpt4all
+    
+    # running
+    # - sqlmap, dalfox, XSStrike
+    # - dt: ?
+    # - ssti: ?gossti, ?SSTImap
+    # - ?ssrf: ?SSRFmap
+    # - ?ci: commix
+    # - https://github.com/topics/VULN
+}
+
+function contentDiscovery() {
+    domainsFile="${1:=scope.txt}"
+    passiveUrlsFile="${2:=urls.passive.txt}"
+
+    # getting standard wordlists
+    curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
+
+    # building custom wordlist
+    for host in $(cat $domainsFile); do
+        grep -iE "$host" $passiveUrlsFile > $TMP_PATH/urls.$(url2path $host).txt
+        # TODO: also considerer SPIDER urls
+        buildCustomWordlist $TMP_PATH/urls.$(url2path $host).txt $TMP_PATH/fuzz.custom.$(url2path $host).txt
+        rm $TMP_PATH/urls.$(url2path $host).txt
+    done
+
+    cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
+    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
 }
 
 function quickPortScanning() {
@@ -534,6 +573,7 @@ function buildCustomWordlist() {
     export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
     cat $customUrlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sed 's/\/$//g' | sed '/^[;%\^\&]/d' | sort -u > $customWordlistFile".1"
     # delete custom wordlist if it is too big
+    # TODO: consider use head verifing limit in settings variable 
     if [ $(wc -l < $customWordlistFile".1") -gt 5000 ]; then
         rm $customWordlistFile".1"
         >$customWordlistFile".1"
@@ -557,6 +597,7 @@ function buildCustomWordlist() {
         }
     }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&]/d' | sort -u > $customWordlistFile".2"
     # delete custom wordlist if it is too big
+    # TODO: consider use head verifing limit in settings variable
     if [ $(wc -l < $customWordlistFile".2") -gt 10000 ]; then
         rm $customWordlistFile".2"
         >$customWordlistFile".2"
