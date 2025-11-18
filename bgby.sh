@@ -126,10 +126,11 @@ EOF
 
 function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
+    sed -i '/^$/d' $domainsFile
     passiveUrlsFile="${2:=urls.passive.txt}"
     subdomainsFile="${3:=subdomains.all.txt}"
 
-    sed -i '/^$/d' $domainsFile
+
     passiveSubdomainDiscovery $domainsFile $passiveUrlsFile
     activeSubdomainDiscovery $domainsFile
     # merge all subdomains
@@ -138,6 +139,7 @@ function subdomainDiscovery() {
 
 function passiveSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
+    sed -i '/^$/d' $domainsFile
     passiveUrlsFile="${2:=urls.passive.txt}"
     # passive recon
     function checkCrt() {
@@ -217,7 +219,8 @@ json = false
 
 function activeSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
-
+    sed -i '/^$/d' $domainsFile
+    
     function zoneTransfer() {
         domain="${1:?missing domain}"
         for ns in $(host -t NS $domain | grep -o 'name server .*' | awk '{ print $3 }'); do
@@ -444,6 +447,7 @@ function customVulnScanning() {
 
 function contentDiscovery() {
     domainsFile="${1:=scope.txt}"
+    sed -i '/^$/d' $domainsFile
     passiveUrlsFile="${2:=urls.passive.txt}"
 
     # getting standard wordlists
