@@ -129,6 +129,7 @@ function subdomainDiscovery() {
     passiveUrlsFile="${2:=urls.passive.txt}"
     subdomainsFile="${3:=subdomains.all.txt}"
 
+    sed -i '/^$/d' $domainsFile
     passiveSubdomainDiscovery $domainsFile $passiveUrlsFile
     activeSubdomainDiscovery $domainsFile
     # merge all subdomains
@@ -203,9 +204,13 @@ json = false
     chmod 600 "$TMP_PATH/gau.toml"
 
     # passive url gathering
-    cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt 
-    waymore -i $domainsFile -mode U -oU $TMP_PATH/waymore.output.txt
-    cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.txt | sort -u > $passiveUrlsFile
+    cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt
+    limitedCommonCrawl=0
+    curl -s -I https://index.commoncrawl.org/collinfo.json || limitedCommonCrawl=1
+    waymore -i $domainsFile -lcc $limitedCommonCrawl -mode B -oU $TMP_PATH/waymore.output.urls -oR pages
+    domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
+    grep -iEh "[^/:>\" =@]*($domains)[^><\" ;,\!]*" -o pages/* | tr '[:upper:]' '[:lower:]' | sed 's/\/$//g' | sed 's/\\//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
+    cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls | sort -u > $passiveUrlsFile 
     # extracting subdomains from urls
     cat $passiveUrlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
 }
@@ -239,10 +244,11 @@ function activeSubdomainDiscovery() {
     cat subdomains/*.tls.wildcard.txt >> $TMP_PATH/brute.dns.potential.txt
 
     # removing crazy dns wildcards
-    awk '!seen[$0]++' $TMP_PATH/brute.dns.potential.txt > $TMP_PATH/brute.dns.potential.uniq.txt 
+    awk '!seen[$0]++' $TMP_PATH/brute.dns.potential.txt | sed '/^$/d' > $TMP_PATH/brute.dns.potential.uniq.txt
     sed -i 's/^/nonexist.iuygfcvbnjk./' $TMP_PATH/brute.dns.potential.uniq.txt
+    echo 'makingsurethefileisnotempty' > $TMP_PATH/brute.dns.removed.txt
     dnsx -a -silent -no-color -l $TMP_PATH/brute.dns.potential.uniq.txt -o $TMP_PATH/brute.dns.removed.txt
-    awk -F, 'NR==FNR { keys[$0]; next } !($1 in keys)' $TMP_PATH/brute.dns.removed.txt  $TMP_PATH/brute.dns.potential.uniq.txt >  $TMP_PATH/brute.dns.targets.txt
+    awk -F, 'NR==FNR { keys[$1]; next } !($1 in keys)' $TMP_PATH/brute.dns.removed.txt  $TMP_PATH/brute.dns.potential.uniq.txt >  $TMP_PATH/brute.dns.targets.txt
     sed -i 's/^nonexist.iuygfcvbnjk\.//' $TMP_PATH/brute.dns.targets.txt
 
     # bruting dns targets
@@ -372,16 +378,16 @@ function vulnScanning() {
 function spidering() {
     webFilteredFile="${1:=web.filtered.txt}"
     
-    gospider -S $webFilteredFile -u web -d 3 -R -o spider
+    gospider -S $webFilteredFile -u web -d 3 -R -o pages
     
     # CHECKING AWS URLS
-    grep -Rio -Pa ".{2,30}amazonaws.{2,70}" spider | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" > $TMP_PATH/aws.txt 
-    grep -Rio -Pa "aws-s3.{11,70}" spider | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" >> $TMP_PATH/aws.txt
+    grep -Rio -Pa ".{2,30}amazonaws.{2,70}" pages | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" > $TMP_PATH/aws.txt 
+    grep -Rio -Pa "aws-s3.{11,70}" pages | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" >> $TMP_PATH/aws.txt
     cat $TMP_PATH/aws.txt | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/aws.urls.txt
     # trufflehog s3 --bucket=bucket name
 
     # CHECKING NEW SUBDOMAINS
-    spiderSubdomains=( $(grep -RP "^\[subdomains\]" spider | awk '{print $3}' | sed 's/http[s]\?...//' | sort -u) )    
+    spiderSubdomains=( $(grep -RP "^\[subdomains\]" pages | awk '{print $3}' | sed 's/http[s]\?...//' | sort -u) )    
     for sub in "${spiderSubdomains[@]}"; do
         if ! (grep -q "$sub" subdomains.all.txt); then
             # A=$(queryDNS A $sub)
@@ -395,10 +401,10 @@ function spidering() {
     done
 
     ## pentesting only
-    grep -iE 'http[s]?://[^/"\?]+' -aoh spider/* | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > results/seeds.potential.txt
+    grep -REi 'http[s]?://[^/"\?]+' -aoh pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > results/seeds.potential.txt
 
     # CHECKING JWT TOKENS
-    grep -Eh -Roa "eyJ[^\"' ]{14,2048}" spider | urlDecode | sort -u > results/jwts.txt
+    grep -Eh -Roa "eyJ[^\"' ]{14,2048}" pages | urlDecode | sort -u > results/jwts.txt
     (
         mkdir -p $TMP_PATH/passwords/ && cd $_ && 
         curl -L https://weakpass.com/download/48/10_million_password_list_top_10000.txt.gz --output - | gunzip -c > 10_million_password_list_top_10000.txt
