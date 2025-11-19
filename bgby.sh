@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 # TODO: avoid loading big files at once in memory
+# TODO: support for api token array, check the bottleneck
 
 CONFIG_FILE="$HOME/.bgby.cfg"
 
@@ -100,11 +101,15 @@ URL_SCAN_API_KEY=""
 
     # checking api keys
     if [ -z "$GITHUB_API_KEY" ] || [ -z "$PDCP_API_KEY" ] || [ -z "$SECURITY_TRAILS_API_KEY" ] || [ -z "$SHODAN_API_KEY" ] || [ -z "$INTELX_API_KEY" ] || [ -z "$WPSCAN_API_KEY" ] || [ -z "$URL_SCAN_API_KEY" ]; then
-        echo "[-] To have better results, it is IMPORTANT to fill in all API keys in $file"
+        echo "[-] ⚠️ To have better results, it is IMPORTANT to fill in ALL API keys in $file"
         # read "choice?[*] Do you want to exit now to fill the file? (Y/n): "
         # if [[ "$choice" != "n" && "$choice" != "N" ]]; then
         #     exit 1
         # fi
+    else
+        if [ $(curl https://api.github.com -H "Authorization: Bearer $GITHUB_API_KEY" -so /dev/null -w "%{http_code}") -eq 401 ]; then
+            echo "[-] ⚠️ GitHub API key expired (or invalid). To have better results, update it in $file"
+        fi
     fi
 }
 checkRequirements
@@ -176,8 +181,8 @@ intelx:
     subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -o subdomains/subfinder.$(date +"%s").txt
     export PDCP_API_KEY
     chaos -dL $domainsFile -o subdomains/chaos.txt
-    grep '^*.' subdomains/chaos.txt | sed 's/^*.//' | sort -u > subdomains/chaos.tls.wildcard.txt
-    sed -i 's/^*.//' subdomains/chaos.txt
+    grep '^*.' subdomains/chaos.txt | sed 's/^*[.]//' | sort -u > subdomains/chaos.tls.wildcard.txt
+    sed -i 's/^*[.]//' subdomains/chaos.txt
 
     # TODO: more api keys https://docs.google.com/spreadsheets/d/19lns4DUmCts1VXIhmC6x-HaWgNT7vWLH0N68srxS7bI/edit?gid=0#gid=0
     # https://sidxparab.gitbook.io/subdomain-enumeration-guide/introduction/prequisites
