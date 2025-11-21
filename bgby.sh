@@ -333,6 +333,7 @@ function subdomainCompilation() {
         ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
         cdn=$(grep "^$ip " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
         line="$domain,$subdomain,$ip,$ptr,$cdn"
+        # consider adding more info later (ASN)
         echo $line >> $resultsFile
     done; unset IFS
     sort $resultsFile -o $resultsFile
@@ -351,31 +352,31 @@ function reconAnalysis() {
     ipsFile="${5:=ips.txt}"
 
     # TAKEOVER
-    # TODO: rework checkTakeover, consider using dnsx to get all available domains at once
     OKGREEN='\033[92m'
     WARNING='\033[93m'
     ENDC='\033[0m'
 
-    function checkTakeover() {
+    function checkCnameTakeover() {
         host="$1"
+        origin="$2"
         CNAME=$(queryDNS CNAME $host)
         
-        if ! (nameNotFound "$CNAME"); then         
-            cname=$(echo $CNAME | tail -1 | rev | cut -d' ' -f1 | rev)
+        if ! (nameNotFound "$CNAME"); then
+            cname=$(echo $CNAME | tail -1 | rev | cut -d' ' -f1 | rev | sed 's/\.$//')
             if ! (nameNotFound "$(queryDNS CNAME $cname)"); then
-                checkTakeover $cname
+                checkCnameTakeover $cname $origin
                 return
             fi
             if [ ! -z "$(checkDomain $cname)" ]; then
-                echo $OKGREEN"[+] AVAILABLE CNAME $ENDC"$cname" <- "$host
+                echo $OKGREEN"[+] AVAILABLE CNAME $ENDC"$cname" <- "$origin
             fi
         fi
     }
     
     mkdir -p results
-    for host in $(cat $subdomainsFile | sort -u); do
-        checkTakeover "$host"
-    done > results/takeover.manual.txt
+    while read -r subdomain; do
+        checkCnameTakeover "$subdomain" "$subdomain"
+    done < <(sort -u $subdomainsFile | dnsx -no-color -cname -silent) > results/takeover.cname.txt
 
     subzy run --targets $subdomainsFile --hide_fails --vuln --output results/takeover.subzy.txt
     
@@ -585,7 +586,7 @@ function logAndCall() {
     echo "finished $functionName: $(date)" >> /var/tmp/log.txt
 }
 
-function nameNotFound() {
+function nameNotFound() { 
     if [ -z "$1" ]; then
         return 0
     fi
@@ -601,15 +602,17 @@ function queryDNS() {
 declare -A whoisDict
 
 function checkDomain() {
-    domain="$(getDomain $1)"
+    host="$1"
+    domain="$(getDomain $host)"
     # exception for some domains to avoid false positives checking subdomain takeover
     if (echo "$domain" | grep -qi akamaiedge.net); then
         return
     fi
     A=$(queryDNS A $domain)
     AAAA=$(queryDNS AAAA $domain)
+    A_host=$(queryDNS A $host)
     # if domain not has A or AAAA entry then check whois
-    if (nameNotFound "$AAAA") && (nameNotFound "$A"); then
+    if (nameNotFound "$AAAA") && (nameNotFound "$A") && (nameNotFound "$A_host"); then
         if [ -z ${whoisDict["$domain"]} ]; then
             whoisDict["$domain"]=$(whois $domain)
         fi
