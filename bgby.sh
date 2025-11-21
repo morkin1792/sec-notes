@@ -1,9 +1,11 @@
 #!/bin/zsh
 
 # TODO: avoid loading big files at once in memory
-# TODO: support for api token array, check the bottleneck
+# make sure securitytrails quota are not ip based
 
-CONFIG_FILE="$HOME/.bgby.cfg"
+CONFIG_FILE="$HOME/.bgby.config.yaml"
+TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M:%S")_XXXXXXXX)
+
 
 if [ -z $ZSH_VERSION ]; then
     printf "$(hostname): Oops, this script requires zsh! \n$(whoami): Why?\n$(hostname): Well... because it is annoying to support a lot of different shells, and I use zsh :) \n$(whoami): You convinced me, how can I install zsh? \n$(hostname): 'pacman -S zsh' or 'apt install zsh', but you have to customize it also (check: https://itsfoss.com/zsh-ubuntu/ and https://github.com/morkin1792/mylinux/blob/master/zsh/zshrc). Otherwise, you will hate it! \n"
@@ -13,8 +15,10 @@ fi
 
 function checkRequirements() {
     requiredCommands=(
+        'shuf'              # coreutils
         'whois'             # pacman -S whois || apt install whois
         'jq'                # pacman -S jq || apt install jq
+        'yq'                # pacman -S yq || apt install yq
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         'shuffledns'        # go install -v github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest
         'massdns'           # yay -S massdns || (git clone https://github.com/blechschmidt/massdns.git && cd massdns && make && sudo make install)
@@ -31,6 +35,7 @@ function checkRequirements() {
         'hashcat'           # pacman -S hashcat || apt install hashcat
         'nmap'              # pacman -S nmap || apt install nmap
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+        # 'afrog'             # go install -v github.com/zan8in/afrog/v3/cmd/afrog@latest
         'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && sudo gem install wpscan)
         'gau'               # go install github.com/lc/gau/v2/cmd/gau@latest
         'waymore'           # pip install waymore
@@ -48,45 +53,85 @@ function checkRequirements() {
 }
 
 function checkConfigFile() {
-    local file="$1"
+    local file="$CONFIG_FILE"
 
     if [ ! -f "$file" ]; then
         local template='# bgby config file
-USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
-# DNS_SERVER="1.1.1.1"
-# TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M")_XXXXXXXX)
+variables:
+    USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
+    DNS_SERVER: "1.1.1.1"
 
+apikeys:
+    ## source:    https://securitytrails.com/app/account/credentials
+    ## quota:     50 reqs/month (https://securitytrails.com/app/account/quota)
+    ## obs:       small quota, ⚠️ consider adding multiple keys
+    securitytrails: [
+        "...",
+        "..."
+    ]
 
-# fill in the API keys below
+    ## source:    https://account.shodan.io/#:~:text=Show
+    ## quota:     100 reqs/month
+    ## obs:       long time to reset quota, ⚠️ consider adding multiple keys
+    shodan: []
 
-## https://github.com/settings/personal-access-tokens > Fine-grained personal access tokens
-GITHUB_API_KEY="github..."
+    ## source:    http://accounts.censys.io/settings/personal-access-tokens/#:~:text=Create%20New%20Token
+    ## quota:     100 reqs/month (https://accounts.censys.io/settings/billing/plan)
+    ## obs:       long time to reset quota, ⚠️ consider adding multiple keys
+    censys: []
 
-## https://cloud.projectdiscovery.io/settings/api-key
-PDCP_API_KEY=""
+    ## source:    https://github.com/settings/personal-access-tokens#:~:text=Generate%20new%20token
+    ## quota:     10 reqs/min for the search code endpoint (https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28#rate-limit#:~:text=10%20requests%20per%20minute)
+    ## obs:       small quota, ⚠️ consider adding multiple keys
+    github: []
 
-## https://securitytrails.com/app/account/credentials
-SECURITY_TRAILS_API_KEY=""
+    ## source:    https://www.virustotal.com/gui/settings#:~:text=API%20Key
+    ## quota:     supposedly 4 reqs/min (https://docs.virustotal.com/reference/public-vs-premium-api)
+    ## obs:       supposedly small quota, however in practice it seems way higher
+    virustotal: []
 
-## https://account.shodan.io/ > click "Show"
-SHODAN_API_KEY=""
+    ## source:    https://cloud.projectdiscovery.io/settings/api-key
+    ## quota:     60 reqs/min/ip (https://docs.projectdiscovery.io/opensource/chaos/running#notes) 
+    ## obs:       only one key is supported
+    chaos: 
+        - ""
 
-## https://intelx.io/account?tab=developer
-INTELX_API_KEY=""
+    ## source:    https://user.whoisxmlapi.com/settings/general/#:~:text=API%20key
+    ## quota:     500 reqs/month (https://user.whoisxmlapi.com/products)
+    whoisxmlapi: []
 
-## https://wpscan.com/profile/
-WPSCAN_API_KEY=""
+    ## source:    https://intelx.io/account?tab=developer#:~:text=Key
+    ## quota:     50 reqs/day (https://intelx.io/product#:~:text=Free%20Tiers)
+    intelx: []
 
-## https://urlscan.io/user/profile/
-URL_SCAN_API_KEY=""
+    ## source:    https://sslmate.com/account/api_keys
+    ## quota:     75 reqs/min (https://sslmate.com/pricing/ct_search_api)
+    certspotter: []
+
+    ## source:    https://otx.alienvault.com/settings#:~:text=OTX%20Key
+    ## quota:     10000 reqs/hour (https://levelblue.com/blogs/security-essentials/the-upgraded-alienvault-otx-api-ways-to-score-swag#:~:text=requests%20per%20hour)
+    alienvault: 
+        - ""
+
+    ## source:    https://wpscan.com/profile/
+    ## quota:     25 reqs/day (https://wpscan.com/pricing/#:~:text=calls%20per%20day) 
+    wpscan: []
+
+    ## source:    https://urlscan.io/user/profile/
+    ## quota:     120 reqs/min (https://urlscan.io/user/quotas/#:~:text=Search%20Requests)
+    ## obs:       only one key is supported
+    urlscan: 
+        - ""
 
 '
         printf "%s\n" "$template" > "$file"
         chmod 600 "$file"
         echo "[*] Created config file: $file"
     fi
-    # loading configs
-    source "$CONFIG_FILE"
+    # loading variables
+    while read -r var; do
+        eval $var
+    done < <(yq '.variables' "$file" -j -M --indent 0 | tail +2 | head -n -1 | sed 's/^"/export /g' | sed 's/": /=/g' | sed 's/,$//g')
 
     # setting default values if not defined
     if [ -z "$USER_AGENT" ]; then
@@ -95,29 +140,28 @@ URL_SCAN_API_KEY=""
     if [ -z "$DNS_SERVER" ]; then
         DNS_SERVER="1.1.1.1"
     fi
-    if [ -z "$TMP_PATH" ]; then
-        TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M")_XXXXXXXX)
-    fi
 
     # checking api keys
-    if [ -z "$GITHUB_API_KEY" ] || [ -z "$PDCP_API_KEY" ] || [ -z "$SECURITY_TRAILS_API_KEY" ] || [ -z "$SHODAN_API_KEY" ] || [ -z "$INTELX_API_KEY" ] || [ -z "$WPSCAN_API_KEY" ] || [ -z "$URL_SCAN_API_KEY" ]; then
-        echo "[-] ⚠️ To have better results, it is IMPORTANT to fill in ALL API keys in $file"
+    if yq -e '.apikeys[] | select(length == 0)' "$file" >/dev/null; then
+        echo -e "[-] ⚠️ Some API keys are empty, to have better results, it is IMPORTANT to fill in ALL API keys in $file\n -> Also consider adding multiple API keys \n -> AT LEAST for \"securitytrails\" and \"github\"\n"
         # read "choice?[*] Do you want to exit now to fill the file? (Y/n): "
         # if [[ "$choice" != "n" && "$choice" != "N" ]]; then
         #     exit 1
         # fi
-    else
-        if [ $(curl https://api.github.com -H "Authorization: Bearer $GITHUB_API_KEY" -so /dev/null -w "%{http_code}") -eq 401 ]; then
-            echo "[-] ⚠️ GitHub API key expired (or invalid). To have better results, update it in $file"
-        fi
     fi
+
+    for ghToken in $(yq -r '.apikeys.github[]' "$file"); do
+        if [ $(curl https://api.github.com -H "Authorization: Bearer $ghToken" -so /dev/null -w "%{http_code}") -eq 401 ]; then
+            echo "[-] ⚠️ GitHub API key expired (or invalid). To have better results, update the key $ghToken in $file"
+        fi
+    done
 }
 checkRequirements
-checkConfigFile "$CONFIG_FILE"
+checkConfigFile
 
 echo Using $TMP_PATH as temporary space
 
-cat <<EOF
+local welcomeMsg="
 logAndCall subdomainDiscovery
 logAndCall subdomainCompilation
 logAndCall reconAnalysis
@@ -127,14 +171,14 @@ logAndCall spidering
 # logAndCall contentDiscovery
 logAndCall quickPortScanning
 logAndCall portScanning # requires sudo
-EOF
+"
+printf "%s\n" "$welcomeMsg"
 
 function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
     passiveUrlsFile="${2:=urls.passive.txt}"
     subdomainsFile="${3:=subdomains.all.txt}"
-
 
     passiveSubdomainDiscovery $domainsFile $passiveUrlsFile
     activeSubdomainDiscovery $domainsFile
@@ -146,7 +190,13 @@ function passiveSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
     passiveUrlsFile="${2:=urls.passive.txt}"
-    # passive recon
+
+    bigNumberOfDomains=false
+    if [ $(wc -l < $domainsFile) -gt 20 ]; then
+        bigNumberOfDomains=true
+        echo "[*] ⚠️ Detected a significant number of domains, some tools/providers will be limited to avoid time and quota issues"
+    fi
+    
     function checkCrt() {
         domain="${1:?missing domain}"
         curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $USER_AGENT" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sort -u
@@ -154,8 +204,12 @@ function passiveSubdomainDiscovery() {
     mkdir -p subdomains
     for domain in $(cat $domainsFile); do
         checkCrt $domain >> subdomains/crt.txt
-        export GITHUB_TOKEN=$GITHUB_API_KEY
+        export GITHUB_TOKEN=$(yq -r '.apikeys.github[]' "$CONFIG_FILE" | tr '\n' ',' | sed 's/,$//')
         github-subdomains -d $domain -o subdomains/github.$domain.txt >> $TMP_PATH/github-subdomains.output.txt
+        if [ $bigNumberOfDomains = false ]; then
+            # required for rate limiting, but ignored if there are many domains
+            sleep 60
+        fi
     done
     grep '^*.' subdomains/crt.txt | sed 's/^*.//' | sort -u > subdomains/crt.tls.wildcard.txt
     sed -i 's/^*.//' subdomains/crt.txt
@@ -163,29 +217,22 @@ function passiveSubdomainDiscovery() {
     cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
     #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
     
-    local provider_config="
-securitytrails:
-  - $SECURITY_TRAILS_API_KEY
-github:
-  - $GITHUB_API_KEY
-chaos:
-  - $PDCP_API_KEY
-shodan:
-  - $SHODAN_API_KEY
-intelx:
-  - $INTELX_API_KEY
-"
-    printf "%s\n" "$provider_config" > "$TMP_PATH/provider-config.yaml"
-    chmod 600 "$TMP_PATH/provider-config.yaml"
-
-    subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -o subdomains/subfinder.$(date +"%s").txt
-    export PDCP_API_KEY
+    export PDCP_API_KEY=$(yq -r '.apikeys.chaos' "$CONFIG_FILE" | head -1)
     chaos -dL $domainsFile -o subdomains/chaos.txt
     grep '^*.' subdomains/chaos.txt | sed 's/^*[.]//' | sort -u > subdomains/chaos.tls.wildcard.txt
     sed -i 's/^*[.]//' subdomains/chaos.txt
 
-    # TODO: more api keys https://docs.google.com/spreadsheets/d/19lns4DUmCts1VXIhmC6x-HaWgNT7vWLH0N68srxS7bI/edit?gid=0#gid=0
-    # https://sidxparab.gitbook.io/subdomain-enumeration-guide/introduction/prequisites
+
+    yq -y '.apikeys' "$CONFIG_FILE" > "$TMP_PATH/provider-config.yaml"
+    chmod 600 "$TMP_PATH/provider-config.yaml"
+    extraParam=""
+    if [ $bigNumberOfDomains = true ]; then
+        # if there are many domains, disable some providers to avoid end of month quota issues
+        extraParam="-es securitytrails,censys,shodan,whoisxmlapi"
+    fi
+    # apparently rls is not working at all (https://github.com/projectdiscovery/subfinder/issues/1434), but it is here for when they fix it
+    subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -rls "censys=1/s,virustotal=1/s,intelx=2/s,certspotter=1/s,alienvault=10/s" -o subdomains/subfinder.$(date +"%s").txt $extraParam
+
     local gau_config="
 threads = 2
 verbose = false
@@ -197,7 +244,7 @@ blacklist = []
 json = false
 
 [urlscan]
-  apikey = \"$URL_SCAN_API_KEY\"
+  apikey = \"$(yq -r '.apikeys.urlscan' $CONFIG_FILE | head -1)\"
 
 [filters]
   from = \"\"
@@ -362,7 +409,7 @@ function vulnScanning() {
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
     nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
     for url in $(cat wordpress.txt); do
-        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $WPSCAN_API_KEY
+        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(yq -r '.apikeys.wpscan[]' "$CONFIG_FILE" | shuf -n1)
     done
 
     nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
@@ -381,6 +428,7 @@ function vulnScanning() {
         -t http/takeovers
     
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
+    # TODO: afrog -T $webFilteredFile 
 }
 
 function spidering() {
@@ -431,6 +479,35 @@ function spidering() {
 }
 
 function customVulnScanning() {
+
+#     1. filter urls
+#     Remove Static Files: Regex out .jpg, .css, .png, .woff, .js (unless scanning for secrets).
+#     Smart Deduplication: Use a tool like uro. It removes duplicate parameters.
+# 2. traffic cop
+#     Bucket A (SQLi Candidates): Look for params like id=, select=, report=, view=.
+#     Command: gf sqli endpoints.txt > potential_sqli.txt
+#     Bucket B (XSS Candidates): Look for params that reflect input like q=, search=, name=, query=.
+#     Command: gf xss endpoints.txt > potential_xss.txt
+#     Bucket C (SSRF/Redirect): Look for url=, dest=, next=, uri=.
+#     Command: gf ssrf endpoints.txt > potential_ssrf.txt
+# 3. Pulse check
+#     Run a lightweight "check" to see if the tool is even needed.
+
+#     For XSS: Don't run Dalfox immediately. Run Gxss (or freq) first.
+
+#     Logic: Gxss checks: "Does the character I put in the parameter actually appear in the response body?"
+
+#     If YES: Send to Dalfox.
+
+#     If NO: Discard. (Dalfox would have wasted 2 minutes finding nothing).
+
+#     For SQLi: Do not send raw URLs to SQLMap. It is too slow.
+
+#     Logic: Use ghauri (lighter) or a custom Nuclei template that fuzzes for SQL errors specifically on those parameters first.
+
+# cat all_urls.txt | uro | gf xss | Gxss -c 100 | dalfox pipe
+
+
     # TODO: extract URLS, choose some and then try more specific tools
     # extract URLs + parameters (+ methods): katana - OK 
     # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
