@@ -3,7 +3,7 @@
 # TODO: avoid loading big files at once in memory
 # make sure securitytrails quota are not ip based
 
-CONFIG_FILE="$HOME/.bgby.config.yaml"
+CONFIG_FILE="$HOME/.bgby.yaml"
 TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M:%S")_XXXXXXXX)
 
 
@@ -72,12 +72,12 @@ apikeys:
 
     ## source:    https://account.shodan.io/#:~:text=Show
     ## quota:     100 reqs/month
-    ## obs:       long time to reset quota, ⚠️ consider adding multiple keys
+    ## obs:       long window to reset quota, ⚠️ consider adding multiple keys
     shodan: []
 
-    ## source:    http://accounts.censys.io/settings/personal-access-tokens/#:~:text=Create%20New%20Token
+    ## source:    https://accounts.censys.io/settings/personal-access-tokens/#:~:text=Create%20New%20Token
     ## quota:     100 reqs/month (https://accounts.censys.io/settings/billing/plan)
-    ## obs:       long time to reset quota, ⚠️ consider adding multiple keys
+    ## obs:       long window to reset quota, ⚠️ consider adding multiple keys
     censys: []
 
     ## source:    https://github.com/settings/personal-access-tokens#:~:text=Generate%20new%20token
@@ -217,7 +217,7 @@ function passiveSubdomainDiscovery() {
     cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
     #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
     
-    export PDCP_API_KEY=$(yq -r '.apikeys.chaos' "$CONFIG_FILE" | head -1)
+    export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
     chaos -dL $domainsFile -o subdomains/chaos.txt
     grep '^*.' subdomains/chaos.txt | sed 's/^*[.]//' | sort -u > subdomains/chaos.tls.wildcard.txt
     sed -i 's/^*[.]//' subdomains/chaos.txt
@@ -244,7 +244,7 @@ blacklist = []
 json = false
 
 [urlscan]
-  apikey = \"$(yq -r '.apikeys.urlscan' $CONFIG_FILE | head -1)\"
+  apikey = \"$(yq -y '.apikeys.urlscan' $CONFIG_FILE | sed 's/^- //' | head -1)\"
 
 [filters]
   from = \"\"
@@ -410,7 +410,7 @@ function vulnScanning() {
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
     nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
     for url in $(cat wordpress.txt); do
-        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(yq -r '.apikeys.wpscan[]' "$CONFIG_FILE" | shuf -n1)
+        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //' | shuf -n1)
     done
 
     nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
