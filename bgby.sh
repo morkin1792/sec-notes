@@ -1,7 +1,6 @@
 #!/bin/zsh
 
 # TODO: avoid loading big files at once in memory
-# make sure securitytrails quota are not ip based
 
 CONFIG_FILE="$HOME/.bgby.yaml"
 TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M:%S")_XXXXXXXX)
@@ -39,6 +38,8 @@ function checkRequirements() {
         'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && sudo gem install wpscan)
         'gau'               # go install github.com/lc/gau/v2/cmd/gau@latest
         'waymore'           # pip install waymore
+        'gf'                # go install -v github.com/tomnomnom/gf@latest && git clone https://github.com/1ndianl33t/Gf-Patterns ~/.gf
+        'uro'               # pipx install uro
     )
     # 'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
     # 's3scanner'         # go install -v github.com/sa7mon/s3scanner@latest
@@ -59,12 +60,11 @@ function checkConfigFile() {
         local template='# bgby config file
 variables:
     USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
-    DNS_SERVER: "1.1.1.1"
 
 apikeys:
     ## source:    https://securitytrails.com/app/account/credentials
     ## quota:     50 reqs/month (https://securitytrails.com/app/account/quota)
-    ## obs:       small quota, ⚠️ consider adding multiple keys
+    ## obs:       long reset time + small quota, ⚠️ consider adding multiple keys
     securitytrails: [
         "...",
         "..."
@@ -72,12 +72,12 @@ apikeys:
 
     ## source:    https://account.shodan.io/#:~:text=Show
     ## quota:     100 reqs/month
-    ## obs:       long window to reset quota, ⚠️ consider adding multiple keys
+    ## obs:       long reset time, ⚠️ consider adding multiple keys
     shodan: []
 
     ## source:    https://accounts.censys.io/settings/personal-access-tokens/#:~:text=Create%20New%20Token
     ## quota:     100 reqs/month (https://accounts.censys.io/settings/billing/plan)
-    ## obs:       long window to reset quota, ⚠️ consider adding multiple keys
+    ## obs:       long reset time, ⚠️ consider adding multiple keys
     censys: []
 
     ## source:    https://github.com/settings/personal-access-tokens#:~:text=Generate%20new%20token
@@ -136,9 +136,6 @@ apikeys:
     # setting default values if not defined
     if [ -z "$USER_AGENT" ]; then
         USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
-    fi
-    if [ -z "$DNS_SERVER" ]; then
-        DNS_SERVER="1.1.1.1"
     fi
 
     # checking api keys
@@ -259,9 +256,7 @@ json = false
 
     # passive url gathering
     cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt
-    limitedCommonCrawl=0
-    curl -s -I https://index.commoncrawl.org/collinfo.json || limitedCommonCrawl=1
-    waymore -i $domainsFile -lcc $limitedCommonCrawl -mode B -oU $TMP_PATH/waymore.output.urls -oR pages
+    waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR pages
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
     grep -iEh "[^/:>\" =@]*($domains)[^><\" ;,\!]*" -o pages/* | tr '[:upper:]' '[:lower:]' | sed 's/\/$//g' | sed 's/\\//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
     cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls | sort -u > $passiveUrlsFile 
@@ -321,25 +316,27 @@ function subdomainCompilation() {
     subdomainsFile="${1:=subdomains.all.txt}"
     resultsFile="${2:=hosts.csv}"
 
-    cat $subdomainsFile | dnsx -a -aaaa -resp -silent -no-color | awk '!seen[$1]++ {print $1, substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.dnsx.txt
-    cat $TMP_PATH/hosts.dnsx.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
-    cat $TMP_PATH/hosts.dnsx.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr | awk '{print $1, substr($3,2,length($3)-2)}' > $TMP_PATH/hosts.ptr.txt
+    rm -f ${TMP_PATH:?}/dnsx.subdomains.json
+    dnsx -silent -a -aaaa -cname -ns -mx -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
+    cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.a != null) | .host + " " + .a[0]' -r > $TMP_PATH/dnsx.hosts.a.txt
 
-    IFS=$'\n'
-    for subdomainAndIp in $(cat $TMP_PATH/hosts.dnsx.txt); do
-        subdomain=$(echo $subdomainAndIp | cut -d' ' -f1)
-        ip=$(echo $subdomainAndIp | cut -d' ' -f2)
+    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
+    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn | awk '{print $1, substr($3,2,length($3)-2),substr($4, 2, length($4)-2)"_"substr($5,0,length($5)-1)}' > $TMP_PATH/hosts.ptr_asn.txt
+
+    rm -f ${resultsFile:?}
+    while read -r subdomain ip; do
         domain=$(getDomain $subdomain)
-        ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
+        asn=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $3}' | head -1)
         cdn=$(grep "^$ip " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
-        line="$domain,$subdomain,$ip,$ptr,$cdn"
-        # consider adding more info later (ASN)
+        ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
+        ns=$(cat $TMP_PATH/dnsx.subdomains.json | jq -r "select (.host == \"$subdomain\" and .ns != null) | .ns[]?" | tr '\n' '|' | sed 's/|$//')
+        line="$domain,$subdomain,$ip,${asn:-null},${cdn:-null},${ptr:-null},${ns:-null}"
         echo $line >> $resultsFile
-    done; unset IFS
+    done < $TMP_PATH/dnsx.hosts.a.txt
     sort $resultsFile -o $resultsFile
-    sed -i "1i domain,subdomain,ip,ptr,type" $resultsFile
+    sed -i "1i domain,subdomain,ip,asn,cdn,ptr,ns" $resultsFile
     
-    echo "[*] Filter $resultsFile"
+    echo "[*] You may want to filter $resultsFile"
     # xdg-open $resultsFile
 }
 
@@ -351,32 +348,56 @@ function reconAnalysis() {
     webFilteredFile="${4:=web.filtered.txt}"
     ipsFile="${5:=ips.txt}"
 
-    # TAKEOVER
-    OKGREEN='\033[92m'
-    WARNING='\033[93m'
-    ENDC='\033[0m'
+    mkdir -p results
 
-    function checkCnameTakeover() {
-        host="$1"
-        origin="$2"
-        CNAME=$(queryDNS CNAME $host)
-        
-        if ! (nameNotFound "$CNAME"); then
-            cname=$(echo $CNAME | tail -1 | rev | cut -d' ' -f1 | rev | sed 's/\.$//')
-            if ! (nameNotFound "$(queryDNS CNAME $cname)"); then
-                checkCnameTakeover $cname $origin
-                return
-            fi
-            if [ ! -z "$(checkDomain $cname)" ]; then
-                echo $OKGREEN"[+] AVAILABLE CNAME $ENDC"$cname" <- "$origin
-            fi
+    function checkUnregisteredTakeover() {
+        local subdomainsFile="$1"
+
+        if [ ! -f "$TMP_PATH/dnsx.subdomains.json" ]; then
+            dnsx -silent -a -aaaa -cname -ns -mx -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
         fi
+        # cname
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.cname != null and .status_code == "NXDOMAIN") | .host + " " + .cname[-1]'> $TMP_PATH/dnsx.cname.nxdomain.txt
+        while read -r initialHost finalHost; do
+            if (getDomain $finalHost | dnsx -silent -rcode nxdomain | grep -q NXDOMAIN); then
+                echo "[CNAME -> NXDOMAIN] $initialHost -> $finalHost"
+            fi
+        done < $TMP_PATH/dnsx.cname.nxdomain.txt
+
+        # alias
+        # if is in rcode is NOERROR and has no A, AAAA or CNAME, then potential alias
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.a == null and .cname == null and .aaaa == null and .status_code == "NOERROR") | .host' > $TMP_PATH/alias.potential.txt
+        # TODO: check ip address history and try to figure out the service
+
+        # ns
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.ns != null) | .host + " " + .ns[]' > $TMP_PATH/dnsx.ns.txt
+        echo > $TMP_PATH/ns.only.txt
+        while read -r nserver; do
+            getDomain $nserver >> $TMP_PATH/ns.only.txt
+        done < <(cat $TMP_PATH/dnsx.ns.txt | awk '{print $2}' | sort -u)
+        sort -u $TMP_PATH/ns.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/ns.nxdomain.txt
+        for nsnx in $(cat $TMP_PATH/ns.nxdomain.txt); do
+            result=$(grep -i "$nsnx" $TMP_PATH/dnsx.ns.txt)
+            host=$(echo $result | awk '{print $1}')
+            ns=$(echo $result | awk '{print $2}')
+            echo "[NS -> NXDOMAIN] $host -> $ns" 
+        done
+        # mx
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.mx != null) | .host + " " + .mx[]' > $TMP_PATH/dnsx.mx.txt
+        echo > $TMP_PATH/mx.only.txt
+        while read -r mx; do
+            getDomain $mx >> $TMP_PATH/mx.only.txt
+        done < <(cat $TMP_PATH/dnsx.mx.txt | awk '{print $2}' | sort -u)
+        sort -u $TMP_PATH/mx.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/mx.nxdomain.txt
+        for mxnx in $(cat $TMP_PATH/mx.nxdomain.txt); do
+            result=$(grep -i "$mxnx" $TMP_PATH/dnsx.mx.txt)
+            host=$(echo $result | awk '{print $1}')
+            mx=$(echo $result | awk '{print $2}')
+            echo "[MX -> NXDOMAIN] $host -> $mx" 
+        done
     }
     
-    mkdir -p results
-    while read -r subdomain; do
-        checkCnameTakeover "$subdomain" "$subdomain"
-    done < <(sort -u $subdomainsFile | dnsx -no-color -cname -silent) > results/takeover.cname.txt
+    checkUnregisteredTakeover $subdomainsFile > results/takeover.unregistered.potential.txt
 
     subzy run --targets $subdomainsFile --hide_fails --vuln --output results/takeover.subzy.txt
     
@@ -397,7 +418,7 @@ function reconAnalysis() {
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
-    cat $hostsFile | grep -vE ',(waf|cdn)$' | cut -d, -f3 | tail +2 | awk '!x[$0]++' > $ipsFile
+    cat $hostsFile | awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' | tail +2 | awk '!x[$0]++' > $ipsFile
 
 }
 
@@ -405,12 +426,15 @@ function vulnScanning() {
     webAllFile="${1:=web.all.txt}"
     webFilteredFile="${2:=web.filtered.txt}"
 
+    mkdir -p results
+
     # wordpress
     nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
     nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
+    wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
     for url in $(cat wordpress.txt); do
-        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //' | shuf -n1)
+        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
     done
 
     nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
@@ -434,7 +458,10 @@ function vulnScanning() {
 
 function spidering() {
     webFilteredFile="${1:=web.filtered.txt}"
+    mkdir -p results
+
     
+    # TODO: consider keep only katana, compare results
     gospider -S $webFilteredFile -u web -d 3 -R -o pages
     
     # CHECKING AWS URLS
@@ -480,35 +507,9 @@ function spidering() {
 }
 
 function customVulnScanning() {
-
-#     1. filter urls
-#     Remove Static Files: Regex out .jpg, .css, .png, .woff, .js (unless scanning for secrets).
-#     Smart Deduplication: Use a tool like uro. It removes duplicate parameters.
-# 2. traffic cop
-#     Bucket A (SQLi Candidates): Look for params like id=, select=, report=, view=.
-#     Command: gf sqli endpoints.txt > potential_sqli.txt
-#     Bucket B (XSS Candidates): Look for params that reflect input like q=, search=, name=, query=.
-#     Command: gf xss endpoints.txt > potential_xss.txt
-#     Bucket C (SSRF/Redirect): Look for url=, dest=, next=, uri=.
-#     Command: gf ssrf endpoints.txt > potential_ssrf.txt
-# 3. Pulse check
-#     Run a lightweight "check" to see if the tool is even needed.
-
-#     For XSS: Don't run Dalfox immediately. Run Gxss (or freq) first.
-
-#     Logic: Gxss checks: "Does the character I put in the parameter actually appear in the response body?"
-
-#     If YES: Send to Dalfox.
-
-#     If NO: Discard. (Dalfox would have wasted 2 minutes finding nothing).
-
-#     For SQLi: Do not send raw URLs to SQLMap. It is too slow.
-
-#     Logic: Use ghauri (lighter) or a custom Nuclei template that fuzzes for SQL errors specifically on those parameters first.
-
-# cat all_urls.txt | uro | gf xss | Gxss -c 100 | dalfox pipe
-
-
+    targetFile="${1:=web.filtered.txt}"
+    passiveUrlsFile="${2:=urls.passive.txt}"
+    
     # TODO: extract URLS, choose some and then try more specific tools
     # extract URLs + parameters (+ methods): katana - OK 
     # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
@@ -526,12 +527,59 @@ function customVulnScanning() {
     # - ?ssrf: ?SSRFmap
     # - ?ci: commix
     # - https://github.com/topics/VULN
+
+    # echo "[*] Crawling targets with Katana..."
+    # katana -list $targetFile -d 3 -jc -kf -silent -o $TMP_PATH/raw_endpoints.txt
+    # consider passiveUrlsFile && spidering results
+
+    echo "[*] Cleaning and deduplicating endpoints..."
+    cat $TMP_PATH/raw_endpoints.txt | uro | sort -u > $TMP_PATH/clean_endpoints.txt
+    
+    echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/clean_endpoints.txt)"
+
+    mkdir -p results/dast
+    
+    # 3. XSS PIPELINE (The "Reflected" Funnel)
+    echo "[*] Starting XSS Pipeline..."
+    cat $TMP_PATH/clean_endpoints.txt \
+    | gf xss > $TMP_PATH/xss_endpoints.txt
+    cat $TMP_PATH/xss_endpoints.txt \
+    | Gxss -c 100 -p "Reflected" \
+    | dalfox pipe \
+        --skip-mining-all \
+        --skip-xss-scanning \
+        --mining-dict-word $TMP_PATH/fuzz.all.txt \
+        -o results/dast/xss_verified1.txt
+    cat $TMP_PATH/xss_endpoints.txt \
+    | nuclei -dast -t dast/vulnerabilities/xss/ -silent -o results/dast/xss_verified2.txt
+    
+    # 4. SQLi PIPELINE (The "Error" Funnel)
+    echo "[*] Starting SQLi Pipeline..."
+    cat $TMP_PATH/clean_endpoints.txt \
+    | gf sqli \
+    | nuclei -dast -t dast/vulnerabilities/sqli/ -silent -o results/dast/sqli_potential.txt
+    # pipx install git+https://github.com/r0oth3x49/ghauri.git
+    # ghauri -m <(cat $TMP_PATH/clean_endpoints.txt | gf sqli) --random-agent --batch
+
+    # 5. LFI/SSRF PIPELINE (The "Param" Funnel)
+    echo "[*] Starting LFI/SSRF Pipeline..."
+    cat $TMP_PATH/clean_endpoints.txt | gf lfi | nuclei -dast -tags lfi -silent -o results/dast/lfi.txt
+    cat $TMP_PATH/clean_endpoints.txt | gf ssrf | nuclei -dast -tags ssrf -silent -o results/dast/ssrf.txt
+
+    # 6. RANDOM SAMPLE PIPELINE
+    cat $TMP_PATH/clean_endpoints.txt \
+    | shuf -n 1000 \
+    | nuclei -dast -t dast/ -silent -o results/random_sample_scan.txt
+
+    echo "[+] DAST Pipeline Finished. Check results/dast/"
+
 }
 
 function contentDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
     passiveUrlsFile="${2:=urls.passive.txt}"
+    mkdir -p results
 
     # getting standard wordlists
     curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
@@ -539,7 +587,7 @@ function contentDiscovery() {
     # building custom wordlist
     for host in $(cat $domainsFile); do
         grep -iE "$host" $passiveUrlsFile > $TMP_PATH/urls.$(url2path $host).txt
-        # TODO: also considerer SPIDER urls
+        # TODO: also consider SPIDER urls
         buildCustomWordlist $TMP_PATH/urls.$(url2path $host).txt $TMP_PATH/fuzz.custom.$(url2path $host).txt
         rm $TMP_PATH/urls.$(url2path $host).txt
     done
@@ -584,43 +632,6 @@ function logAndCall() {
         exit 1
     fi
     echo "finished $functionName: $(date)" >> /var/tmp/log.txt
-}
-
-function nameNotFound() { 
-    if [ -z "$1" ]; then
-        return 0
-    fi
-    echo "$1" | grep -Eiq 'has no|not found|is handled by 0'
-}
-
-function queryDNS() {
-    type="$1"
-    target="$2"
-    host -t $type -- $target $DNS_SERVER | tail +6 | grep -v ';; '
-}
-
-declare -A whoisDict
-
-function checkDomain() {
-    host="$1"
-    domain="$(getDomain $host)"
-    # exception for some domains to avoid false positives checking subdomain takeover
-    if (echo "$domain" | grep -qi akamaiedge.net); then
-        return
-    fi
-    A=$(queryDNS A $domain)
-    AAAA=$(queryDNS AAAA $domain)
-    A_host=$(queryDNS A $host)
-    # if domain not has A or AAAA entry then check whois
-    if (nameNotFound "$AAAA") && (nameNotFound "$A") && (nameNotFound "$A_host"); then
-        if [ -z ${whoisDict["$domain"]} ]; then
-            whoisDict["$domain"]=$(whois $domain)
-        fi
-        result=${whoisDict["$domain"]}
-        if ( echo $result | grep -Eq '^No match|^NOT FOUND|^Not fo|AVAILABLE|^No Data Fou|has not been regi|No entri' ) || [ $(echo $result | wc -l) -lt 22 ]; then
-            echo "$domain available"
-        fi
-    fi   
 }
 
 function getDomain() {
@@ -672,7 +683,7 @@ function buildCustomWordlist() {
     # TODO: consider use head verifing limit in settings variable 
     if [ $(wc -l < $customWordlistFile".1") -gt 5000 ]; then
         rm $customWordlistFile".1"
-        >$customWordlistFile".1"
+        echo > $customWordlistFile".1"
     fi
 
     cat $customUrlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\|ver\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
@@ -696,7 +707,7 @@ function buildCustomWordlist() {
     # TODO: consider use head verifing limit in settings variable
     if [ $(wc -l < $customWordlistFile".2") -gt 10000 ]; then
         rm $customWordlistFile".2"
-        >$customWordlistFile".2"
+        echo > $customWordlistFile".2"
     fi
     cat $customWordlistFile".1" $customWordlistFile".2" | sort -u > $customWordlistFile
     rm $customWordlistFile".1" $customWordlistFile".2"
