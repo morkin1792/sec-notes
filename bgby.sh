@@ -34,7 +34,7 @@ function checkRequirements() {
         'hashcat'           # pacman -S hashcat || apt install hashcat
         'nmap'              # pacman -S nmap || apt install nmap
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-        # 'afrog'             # go install -v github.com/zan8in/afrog/v3/cmd/afrog@latest
+        'afrog'             # go install -v github.com/zan8in/afrog/v3/cmd/afrog@latest
         'wpscan'            # pacman -S wpscan || (apt install ruby-rubygems ruby-dev && sudo gem install wpscan)
         'gau'               # go install github.com/lc/gau/v2/cmd/gau@latest
         'waymore'           # pip install waymore
@@ -319,6 +319,7 @@ function subdomainCompilation() {
     rm -f ${TMP_PATH:?}/dnsx.subdomains.json
     dnsx -silent -a -aaaa -cname -ns -mx -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
     cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.a != null) | .host + " " + .a[0]' -r > $TMP_PATH/dnsx.hosts.a.txt
+    cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.ns != null) | .host + " " + .ns[0]' -r > $TMP_PATH/dnsx.hosts.ns.txt
 
     cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
     cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn | awk '{print $1, substr($3,2,length($3)-2),substr($4, 2, length($4)-2)"_"substr($5,0,length($5)-1)}' > $TMP_PATH/hosts.ptr_asn.txt
@@ -329,7 +330,7 @@ function subdomainCompilation() {
         asn=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $3}' | head -1)
         cdn=$(grep "^$ip " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
         ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
-        ns=$(cat $TMP_PATH/dnsx.subdomains.json | jq -r "select (.host == \"$subdomain\" and .ns != null) | .ns[]?" | tr '\n' '|' | sed 's/|$//')
+        ns=$(grep "^$subdomain " $TMP_PATH/dnsx.hosts.ns.txt | awk '{print $2}' | head -1)
         line="$domain,$subdomain,$ip,${asn:-null},${cdn:-null},${ptr:-null},${ns:-null}"
         echo $line >> $resultsFile
     done < $TMP_PATH/dnsx.hosts.a.txt
@@ -418,8 +419,7 @@ function reconAnalysis() {
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
-    cat $hostsFile | awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' | tail +2 | awk '!x[$0]++' > $ipsFile
-
+    cat $hostsFile | awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' | awk '!x[$0]++' > $ipsFile
 }
 
 function vulnScanning() {
@@ -431,11 +431,13 @@ function vulnScanning() {
     # wordpress
     nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
     cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
-    nuclei -l wordpress.txt  -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
-    wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
-    for url in $(cat wordpress.txt); do
-        wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
-    done
+    if [ -s wordpress.txt ]; then
+        wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
+        for url in $(cat wordpress.txt); do
+            wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
+        done
+        nuclei -silent -l wordpress.txt -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
+    fi
 
     nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
         -t http/exposures/apis/swagger-api.yaml \
@@ -453,14 +455,14 @@ function vulnScanning() {
         -t http/takeovers
     
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
-    # TODO: afrog -T $webFilteredFile 
+    afrog -T $webFilteredFile -H "User-Agent: $USER_AGENT" -mhe 10 -o results/afrog.results.html
+    # TODO: ?ceye api key
 }
 
 function spidering() {
     webFilteredFile="${1:=web.filtered.txt}"
     mkdir -p results
 
-    
     # TODO: consider keep only katana, compare results
     gospider -S $webFilteredFile -u web -d 3 -R -o pages
     
