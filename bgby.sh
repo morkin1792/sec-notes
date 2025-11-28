@@ -344,10 +344,11 @@ function subdomainCompilation() {
 function reconAnalysis() {
     subdomainsFile="${1:=subdomains.all.txt}"
     hostsFile="${2:=hosts.csv}"
+    rangesFile="${3:=ranges.txt}"
     # output files
-    webAllFile="${3:=web.all.txt}"
-    webFilteredFile="${4:=web.filtered.txt}"
-    ipsFile="${5:=ips.txt}"
+    webAllFile="${4:=web.all.txt}"
+    webFilteredFile="${5:=web.filtered.txt}"
+    ipsFile="${6:=ips.txt}"
 
     mkdir -p results
 
@@ -410,7 +411,13 @@ function reconAnalysis() {
     gobuster s3 -k --wordlist $TMP_PATH/hosts.txt --no-color -o results/buckets.s3.txt
 
     # GETTING WEB HOSTS
-    httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l <(cat $hostsFile | awk -F, '{print $2}') -json -o web.all.json
+    awk -F, '{print $2}' $hostsFile > $TMP_PATH/web.potential.txt
+    if [ -s $rangesFile ]; then
+        echo "[*] Adding IP ranges from $rangesFile to web potential targets"
+        cut -d, -f2 $rangesFile | prips >> $TMP_PATH/web.potential.txt
+    fi
+
+    httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l $TMP_PATH/web.potential.txt -json -o web.all.json
     jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
     filterWebUrls $webAllFile
     jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|tostring)' web.all.json | sort -ur | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
@@ -419,7 +426,12 @@ function reconAnalysis() {
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
 
     # GETTING SCANNABLE IP ADDRESSES
-    cat $hostsFile | awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' | awk '!x[$0]++' > $ipsFile
+    awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' $hostsFile > $TMP_PATH/ips.txt
+    if [ -s $rangesFile ]; then
+        echo "[*] Adding IP ranges from $rangesFile to scannable IPs"
+        cut -d, -f2 $rangesFile | prips >> $TMP_PATH/ips.txt
+    fi
+    awk '!x[$0]++' $TMP_PATH > $ipsFile
 }
 
 function vulnScanning() {
@@ -461,6 +473,7 @@ function vulnScanning() {
 
 function spidering() {
     webFilteredFile="${1:=web.filtered.txt}"
+    subdomainsFile="${2:=subdomains.all.txt}"
     mkdir -p results
 
     # TODO: consider keep only katana, compare results
@@ -475,7 +488,7 @@ function spidering() {
     # CHECKING NEW SUBDOMAINS
     spiderSubdomains=( $(grep -RP "^\[subdomains\]" pages | awk '{print $3}' | sed 's/http[s]\?...//' | sort -u) )    
     for sub in "${spiderSubdomains[@]}"; do
-        if ! (grep -q "$sub" subdomains.all.txt); then
+        if ! (grep -q "$sub" $subdomainsFile); then
             # A=$(queryDNS A $sub)
             # # if there is A entry
             # if ! (nameNotFound "$A"); then
@@ -665,6 +678,23 @@ EOF
     python3 "$tmp_python_script" "$input_file" "$output_file"
     mv $output_file $input_file
     rm -f "$tmp_python_script"
+}
+
+function prips() {
+    function prips_core() {
+        nmap -sL -n "$1" | awk '/Nmap scan report/{print $NF}' #| grep -v '\.0$' | grep -v '\.255$'
+    }
+    if [ "$#" -gt 0 ]; then
+        for range in "$@"; do
+            prips_core "$range"
+        done
+    else
+        while read -r range; do
+            # Skip empty lines
+            [ -z "$range" ] && continue
+            prips_core "$range"
+        done
+    fi
 }
 
 function urlDecode() {
