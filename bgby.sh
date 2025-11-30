@@ -431,7 +431,7 @@ function reconAnalysis() {
         echo "[*] Adding IP ranges from $rangesFile to scannable IPs"
         cut -d, -f2 $rangesFile | prips >> $TMP_PATH/ips.txt
     fi
-    awk '!x[$0]++' $TMP_PATH > $ipsFile
+    awk '!x[$0]++' $TMP_PATH/ips.txt > $ipsFile
 }
 
 function vulnScanning() {
