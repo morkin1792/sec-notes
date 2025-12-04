@@ -359,7 +359,7 @@ function reconAnalysis() {
             dnsx -silent -a -aaaa -cname -ns -mx -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
         fi
         # cname
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.cname != null and .status_code == "NXDOMAIN") | .host + " " + .cname[-1]'> $TMP_PATH/dnsx.cname.nxdomain.txt
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.cname != null and .status_code == "NXDOMAIN") | .host + " " + .cname[-1]' | grep -vE 'elb[.]amazonaws[.]com$' > $TMP_PATH/dnsx.cname.nxdomain.txt
         while read -r initialHost finalHost; do
             if (getDomain $finalHost | dnsx -silent -rcode nxdomain | grep -q NXDOMAIN); then
                 echo "[CNAME -> NXDOMAIN] $initialHost -> $finalHost"
@@ -372,30 +372,36 @@ function reconAnalysis() {
         # TODO: check ip address history and try to figure out the service
 
         # ns
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.ns != null) | .host + " " + .ns[]' > $TMP_PATH/dnsx.ns.txt
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r '
+        select(.ns and (.ns | map(select(. != "")) | length > 0))
+        | .host as $h
+        | .ns[]
+        | select(. != "")
+        | "\($h) \(.)"
+        ' > $TMP_PATH/dnsx.ns.txt
         echo > $TMP_PATH/ns.only.txt
         while read -r nserver; do
             getDomain $nserver >> $TMP_PATH/ns.only.txt
-        done < <(cat $TMP_PATH/dnsx.ns.txt | awk '{print $2}' | sort -u)
+        done < <(cat $TMP_PATH/dnsx.ns.txt | awk '{print $2}' | sort -u | sed '/^$/d')
         sort -u $TMP_PATH/ns.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/ns.nxdomain.txt
-        for nsnx in $(cat $TMP_PATH/ns.nxdomain.txt); do
-            result=$(grep -i "$nsnx" $TMP_PATH/dnsx.ns.txt)
-            host=$(echo $result | awk '{print $1}')
-            ns=$(echo $result | awk '{print $2}')
-            echo "[NS -> NXDOMAIN] $host -> $ns" 
+        for nsnx in $(cat $TMP_PATH/ns.nxdomain.txt | awk '{print $1}'); do
+            grep -i "$nsnx" $TMP_PATH/dnsx.ns.txt | sed 's/ / -> /g' | sed 's/^/[NS -> NXDOMAIN] /g'
         done
         # mx
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.mx != null) | .host + " " + .mx[]' > $TMP_PATH/dnsx.mx.txt
+        cat $TMP_PATH/dnsx.subdomains.json | jq -r '
+            select(.mx and (.mx | map(select(. != "")) | length > 0))
+            | .host as $h
+            | .mx[]
+            | select(. != "")
+            | "\($h) \(.)"
+        ' > $TMP_PATH/dnsx.mx.txt
         echo > $TMP_PATH/mx.only.txt
         while read -r mx; do
             getDomain $mx >> $TMP_PATH/mx.only.txt
-        done < <(cat $TMP_PATH/dnsx.mx.txt | awk '{print $2}' | sort -u)
+        done < <(cat $TMP_PATH/dnsx.mx.txt | awk '{print $2}' | sort -u | sed '/^$/d')
         sort -u $TMP_PATH/mx.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/mx.nxdomain.txt
-        for mxnx in $(cat $TMP_PATH/mx.nxdomain.txt); do
-            result=$(grep -i "$mxnx" $TMP_PATH/dnsx.mx.txt)
-            host=$(echo $result | awk '{print $1}')
-            mx=$(echo $result | awk '{print $2}')
-            echo "[MX -> NXDOMAIN] $host -> $mx" 
+        for mxnx in $(cat $TMP_PATH/mx.nxdomain.txt | awk '{print $1}'); do
+            grep -i "$mxnx" $TMP_PATH/dnsx.mx.txt | sed 's/ / -> /g' | sed 's/^/[MX -> NXDOMAIN] /g'
         done
     }
     
@@ -650,7 +656,9 @@ function logAndCall() {
 }
 
 function getDomain() {
-    psl -b --print-reg-domain -- "$1"
+    local input="$1"
+    input="$(printf '%s' "$input" | sed 's/[.]*$//')"
+    psl -b --print-reg-domain -- "$input"
 }
 
 function filterWebUrls() {
