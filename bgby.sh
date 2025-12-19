@@ -1,6 +1,8 @@
 #!/bin/zsh
 
-# TODO: avoid loading big files at once in memory
+# TODO: look for more templates
+# TODO: look for similar projects (ex: NucleiFuzzer)
+
 
 CONFIG_FILE="$HOME/.bgby.yaml"
 TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M:%S")_XXXXXXXX)
@@ -26,8 +28,13 @@ function checkRequirements() {
         'dnsx'              # go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
         'cdncheck'          # go install -v github.com/projectdiscovery/cdncheck/cmd/cdncheck@latest
         'psl'               # pacman -S libpsl || apt install psl
-        'gospider'          # GO111MODULE=on go install github.com/jaeles-project/gospider@latest
+        'katana'            # CGO_ENABLED=1 go install github.com/projectdiscovery/katana/cmd/katana@latest
+        'gospider'          # go install github.com/jaeles-project/gospider@latest
+        'gitleaks'          # pacman -S gitleaks || (git clone https://github.com/gitleaks/gitleaks.git; cd gitleaks; make build)
+        'nipejs'            # go install go install github.com/i5nipe/nipejs/v2@latest
+        'trufflehog'        # 
         'gowitness'         # go install github.com/sensepost/gowitness@latest (&& apt install chromium)
+        'feroxbuster'       # yay -S feroxbuster-bin || cargo install feroxbuster || https://github.com/epi052/feroxbuster/releases
         'gobuster'          # go install github.com/OJ/gobuster/v3@latest
         'github-subdomains' # go install github.com/gwen001/github-subdomains@latest
         'subzy'             # go install -v github.com/PentestPad/subzy@latest
@@ -40,10 +47,10 @@ function checkRequirements() {
         'waymore'           # pip install waymore
         'gf'                # go install -v github.com/tomnomnom/gf@latest && git clone https://github.com/1ndianl33t/Gf-Patterns ~/.gf
         'uro'               # pipx install uro
+        'dalfox'            # go install github.com/hahwul/dalfox/v2@latest
     )
     # 'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
     # 's3scanner'         # go install -v github.com/sa7mon/s3scanner@latest
-    # dalfox # go install github.com/hahwul/dalfox/v2@latest
 
     for command in ${requiredCommands[@]}; do
         if [ -z "$(which $command)" ] || [ ! -z "$(which $command | grep 'not found' )" ]; then
@@ -60,6 +67,7 @@ function checkConfigFile() {
         local template='# bgby config file
 variables:
     USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
+    CUSTOM_WORDLIST_PER_HOST_LIMIT: 5000  # maximum number of lines per host for custom wordlists
 
 apikeys:
     ## source:    https://securitytrails.com/app/account/credentials
@@ -137,6 +145,9 @@ apikeys:
     if [ -z "$USER_AGENT" ]; then
         USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/333.0.0.0 Safari/537.36"
     fi
+    if [ -z "$CUSTOM_WORDLIST_PER_HOST_LIMIT" ]; then
+        CUSTOM_WORDLIST_PER_HOST_LIMIT=5000
+    fi
 
     # checking api keys
     if yq -e '.apikeys[] | select(length == 0)' "$file" >/dev/null; then
@@ -174,10 +185,9 @@ printf "%s\n" "$welcomeMsg"
 function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
-    passiveUrlsFile="${2:=urls.passive.txt}"
-    subdomainsFile="${3:=subdomains.all.txt}"
+    subdomainsFile="${2:=subdomains.all.txt}"
 
-    passiveSubdomainDiscovery $domainsFile $passiveUrlsFile
+    passiveSubdomainDiscovery $domainsFile
     activeSubdomainDiscovery $domainsFile
     # merge all subdomains
     cat subdomains/* | sed 's/^[.-]//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
@@ -186,7 +196,6 @@ function subdomainDiscovery() {
 function passiveSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
-    passiveUrlsFile="${2:=urls.passive.txt}"
 
     bigNumberOfDomains=false
     if [ $(wc -l < $domainsFile) -gt 20 ]; then
@@ -256,12 +265,13 @@ json = false
 
     # passive url gathering
     cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt
-    waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR pages
+    mkdir -p pages/waymore
+    waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR pages/waymore
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
-    grep -iEh "[^/:>\" =@]*($domains)[^><\" ;,\!]*" -o pages/* | tr '[:upper:]' '[:lower:]' | sed 's/\/$//g' | sed 's/\\//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
-    cat $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls | sort -u > $passiveUrlsFile 
+    grep -Eih "[^/:>\"\`( =@]*($domains)[^><)\`\" ;,\!]*" -Ro pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
+    sort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > urls.passive.txt
     # extracting subdomains from urls
-    cat $passiveUrlsFile | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
+    cat urls.passive.txt | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
 }
 
 function activeSubdomainDiscovery() {
@@ -426,7 +436,8 @@ function reconAnalysis() {
     httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l $TMP_PATH/web.potential.txt -json -o web.all.json
     jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
     filterWebUrls $webAllFile
-    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|tostring)' web.all.json | sort -ur | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
+    # TODO: check preference for https
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|sort|tostring)' web.all.json | sort -ur | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
 
     # GETTING WEB SCREENSHOTS
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
@@ -475,42 +486,40 @@ function vulnScanning() {
     nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume nuclei-gold-resume.cfg
     afrog -T $webFilteredFile -H "User-Agent: $USER_AGENT" -mhe 10 -o results/afrog.results.html
     # TODO: ?ceye api key
+    # consider Retire.js
 }
 
 function spidering() {
     webFilteredFile="${1:=web.filtered.txt}"
     subdomainsFile="${2:=subdomains.all.txt}"
+    domainsFile="${3:=scope.txt}"
+    # output files
+    urlsFile="${3:=urls.all.txt}"
     mkdir -p results
 
-    # TODO: consider keep only katana, compare results
-    gospider -S $webFilteredFile -u web -d 3 -R -o pages
+    mkdir -p pages/katana
+    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -xhr -sr -srd pages/katana -o urls.katana.txt >/dev/null
+    
+    gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap --blacklist ".(jpg|jpeg|gif|css|tif|tiff|png|ttf|woff|woff2|ico|svg)" -R -o pages/gospider
+    domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
+    grep -Eo -- "http[^ ]+($domains)[^ ]+" pages/gospider > urls.gospider.txt
+
+    sort -u urls.katana.txt urls.gospider.txt urls.passive.txt > $urlsFile
     
     # CHECKING AWS URLS
-    grep -Rio -Pa ".{2,30}amazonaws.{2,70}" pages | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" > $TMP_PATH/aws.txt 
-    grep -Rio -Pa "aws-s3.{11,70}" pages | grep -Eio "[^\"' ]*amazonaws[^\"' ]+" >> $TMP_PATH/aws.txt
-    cat $TMP_PATH/aws.txt | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/aws.urls.txt
+    grep -Rioh -Pa "[^\"'>= ]{0,70}(amazonaws|aws-s3)[^\"' ]{2,70}" pages | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/aws.urls.txt
     # trufflehog s3 --bucket=bucket name
 
     # CHECKING NEW SUBDOMAINS
-    spiderSubdomains=( $(grep -RP "^\[subdomains\]" pages | awk '{print $3}' | sed 's/http[s]\?...//' | sort -u) )    
-    for sub in "${spiderSubdomains[@]}"; do
-        if ! (grep -q "$sub" $subdomainsFile); then
-            # A=$(queryDNS A $sub)
-            # # if there is A entry
-            # if ! (nameNotFound "$A"); then
-            #     echo "[*] found new subdomain: $sub"
-                # TODO: instead of saving, repeat everything from subdomainCompilation
-                echo $sub >> results/subdomains.new.txt
-            # fi
-        fi
-    done
+    awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(sed 's/http[s]\?...//' urls.katana.txt | sed 's/\(\/.*\|.*@\)//g' | sort -u) > results/subdomains.new.txt
+    # TODO: instead of just saving, repeat everything from subdomainCompilation
 
     ## pentesting only
     grep -REi 'http[s]?://[^/"\?]+' -aoh pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > results/seeds.potential.txt
 
     # CHECKING JWT TOKENS
     grep -Eh -Roa "eyJ[^\"' ]{14,2048}" pages | urlDecode | sort -u > results/jwts.txt
-    (
+    if [ ! -f $TMP_PATH/secrets.txt ]; then (
         mkdir -p $TMP_PATH/passwords/ && cd $_ && 
         curl -L https://weakpass.com/download/48/10_million_password_list_top_10000.txt.gz --output - | gunzip -c > 10_million_password_list_top_10000.txt
         curl -LO https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Passwords/darkweb2017-top10000.txt
@@ -519,87 +528,126 @@ function spidering() {
         curl -LO https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Passwords/scraped-JWT-secrets.txt
         curl -LO https://raw.githubusercontent.com/wallarm/jwt-secrets/refs/heads/master/jwt.secrets.list 
         cat $TMP_PATH/passwords/* | sort -u > $TMP_PATH/secrets.txt
-    )
+    ) fi
     hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/jwts.cracked.txt
     #hashcat results/jwts.txt --show
     
-    # TODO: more analysis and regex. maybe using another tools
+    gitleaks dir pages -f csv -r results/secrets.gitleaks.csv
+    trufflehog filesystem ./pages --json > results/secrets.truffle.json
+    nipejs -d pages -json > results/secrets.nipejs.json
+
     # TODO: check cognito 
 }
 
 function customVulnScanning() {
     targetFile="${1:=web.filtered.txt}"
-    passiveUrlsFile="${2:=urls.passive.txt}"
+    urlsFile="${2:=urls.all.txt}"
     
-    # TODO: extract URLS, choose some and then try more specific tools
-    # extract URLs + parameters (+ methods): katana - OK 
-    # https://gist.github.com/morkin1792/0d4ef875d42c7e722117e3fd2f60d10e#app-analysis-and-history 
-    # https://github.com/morkin1792/sec-notes/blob/8007e2b6a08811c4d445916ae23355d0d7335ba7/web.md#content-discovery
-    
-    # choosing urls:
-    #    - preprocessing (removing static files, tracking parameters, parameter blacklist)
-    #    - maybe manually requesting (checking for reflection, sql error)
+    # TODO: consider POST requests 
     #    - ?llama, gpt4all
-    
-    # running
-    # - sqlmap, dalfox, XSStrike
+
+    # TODO: more checks
+    # - sqlmap
     # - dt: ?
     # - ssti: ?gossti, ?SSTImap
     # - ?ssrf: ?SSRFmap
     # - ?ci: commix
     # - https://github.com/topics/VULN
 
-    # echo "[*] Crawling targets with Katana..."
-    # katana -list $targetFile -d 3 -jc -kf -silent -o $TMP_PATH/raw_endpoints.txt
-    # consider passiveUrlsFile && spidering results
-
-    echo "[*] Cleaning and deduplicating endpoints..."
-    cat $TMP_PATH/raw_endpoints.txt | uro | sort -u > $TMP_PATH/clean_endpoints.txt
-    
-    echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/clean_endpoints.txt)"
+    echo "[*] Cleaning endpoints..."    
+    cat $urlsFile \
+    | grep -Eiv 'js\?[a-z]+=[0-9]{7,}' \
+    | uro | sort -u > $TMP_PATH/endpoints.potential.txt
+    awk -F/ '{print $3}' $TMP_PATH/endpoints.potential.txt | sort -u | httpx -mc 200,201,202,203,204,205,206,207,208,301,302,307,308,400,401,403,404,405,406,410,411,412,415,423 -silent | awk -F/ '{print $3}' | sort -u > $TMP_PATH/domains.alive.txt
+    awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
+    echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
 
     mkdir -p results/dast
     
-    # 3. XSS PIPELINE (The "Reflected" Funnel)
-    echo "[*] Starting XSS Pipeline..."
-    cat $TMP_PATH/clean_endpoints.txt \
-    | gf xss > $TMP_PATH/xss_endpoints.txt
-    cat $TMP_PATH/xss_endpoints.txt \
-    | Gxss -c 100 -p "Reflected" \
-    | dalfox pipe \
-        --skip-mining-all \
-        --skip-xss-scanning \
-        --mining-dict-word $TMP_PATH/fuzz.all.txt \
-        -o results/dast/xss_verified1.txt
-    cat $TMP_PATH/xss_endpoints.txt \
-    | nuclei -dast -t dast/vulnerabilities/xss/ -silent -o results/dast/xss_verified2.txt
-    
-    # 4. SQLi PIPELINE (The "Error" Funnel)
-    echo "[*] Starting SQLi Pipeline..."
-    cat $TMP_PATH/clean_endpoints.txt \
+    # Reflected XSS
+    printf "%s %s\n" "XSS nuclei" "$(date)" >> /tmp/log
+    grep '\?' $TMP_PATH/endpoints.txt \
+    | nuclei -dast -tags xss -H "User-Agent: $USER_AGENT" -silent -o results/dast/xss.nuclei.txt
+
+    printf "%s %s\n" "XSS dalfox B" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt \
+    | gf xss \
+    | dalfox pipe --user-agent "$USER_AGENT" --skip-mining-all --detailed-analysis --deep-domxss --context-aware  --waf-evasion --timeout 11 --delay 300 --follow-redirects --max-cpu 2 --silence -o results/dast/xss.dalfox.B.txt
+
+    printf "%s %s\n" "XSS dalfox A" "$(date)" >> /tmp/log
+    grep '\?' $TMP_PATH/endpoints.txt \
+    | dalfox pipe --user-agent "$USER_AGENT" --skip-xss-scanning --timeout 8 --delay 100 --follow-redirects --max-cpu 3 -o results/dast/xss.dalfox.A.txt
+
+    printf "%s %s\n" "XSStrike + params" "$(date)" >> /tmp/log
+    while read -r url; do
+        echo "[*] Scanning $url"
+        # TODO: pipx install xsstrike
+        xsstrike --url "$url" --headers "User-Agent: $USER_AGENT" --log-file "results/dast/xss.xsstrike.log.$(url2path $url).txt" > results/dast/xss.xsstrike.out.$(url2path $url).txt
+    done < <(grep '\?' $TMP_PATH/endpoints.txt)
+
+    # SQLi
+    printf "%s %s\n" "sqli" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt \
     | gf sqli \
-    | nuclei -dast -t dast/vulnerabilities/sqli/ -silent -o results/dast/sqli_potential.txt
+    | nuclei -dast -tags sqli -H "User-Agent: $USER_AGENT" -silent -o results/dast/sqli_potential.txt
     # pipx install git+https://github.com/r0oth3x49/ghauri.git
-    # ghauri -m <(cat $TMP_PATH/clean_endpoints.txt | gf sqli) --random-agent --batch
+    # ghauri -m <(cat $TMP_PATH/endpoints.txt | gf sqli) --random-agent --batch
 
-    # 5. LFI/SSRF PIPELINE (The "Param" Funnel)
-    echo "[*] Starting LFI/SSRF Pipeline..."
-    cat $TMP_PATH/clean_endpoints.txt | gf lfi | nuclei -dast -tags lfi -silent -o results/dast/lfi.txt
-    cat $TMP_PATH/clean_endpoints.txt | gf ssrf | nuclei -dast -tags ssrf -silent -o results/dast/ssrf.txt
+    # LFI/RFI
+    printf "%s %s\n" "lfi" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt | gf lfi | nuclei -dast -tags lfi,rfi -H "User-Agent: $USER_AGENT" -silent -o results/dast/lfi.txt
+    
+    # SSRF
+    printf "%s %s\n" "ssrf" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt | gf ssrf | nuclei -dast -tags ssrf -H "User-Agent: $USER_AGENT" -silent -o results/dast/ssrf.txt
 
-    # 6. RANDOM SAMPLE PIPELINE
-    cat $TMP_PATH/clean_endpoints.txt \
+    # XXE
+    printf "%s %s\n" "xxe" "$(date)" >> /tmp/log
+    local xxe_json='
+{
+  "flags": "-iE",
+  "pattern": "(\\.xml|\\.svg|\\.json|\\.xsd|\\.dtd|\\.xsl|\\.rss|\\.atom|\\.soap|\\.wsdl)|(xml|doc|document|parser|entity|file|import|upload|svg|source|template|config|soap|wsdl|data|query|input)="
+}
+'
+    printf "%s\n" "$xxe_json" > ~/.gf/bgby_xxe.json
+    cat $TMP_PATH/endpoints.txt | gf bgby_xxe | nuclei -dast -tags xxe -H "User-Agent: $USER_AGENT" -silent -o results/dast/xxe.txt
+
+    # RCE
+    printf "%s %s\n" "RCE" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt | gf rce | nuclei -dast -tags cmdi,rce -H "User-Agent: $USER_AGENT" -silent -o results/dast/rce.txt
+
+    # SSTI
+    printf "%s %s\n" "SSTI" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt | gf ssti | nuclei -dast -tags ssti -H "User-Agent: $USER_AGENT" -silent -o results/dast/ssti.txt
+
+    # # IDOR
+    # printf "%s %s\n" "IDOR" "$(date)" >> /tmp/log
+    # cat $TMP_PATH/endpoints.txt | gf idor | nuclei -dast -tags idor -H "User-Agent: $USER_AGENT" -silent -o results/dast/idor.txt
+
+    # REDIRECT
+    printf "%s %s\n" "redirect" "$(date)" >> /tmp/log
+    cat $TMP_PATH/endpoints.txt | gf redirect | nuclei -dast -tags redirect -H "User-Agent: $USER_AGENT" -silent -o results/dast/redirect.txt
+
+    # RANDOM SAMPLE
+    printf "%s %s\n" "random" "$(date)" >> /tmp/log
+    grep '\?' $TMP_PATH/endpoints.txt \
     | shuf -n 1000 \
-    | nuclei -dast -t dast/ -silent -o results/random_sample_scan.txt
+    | nuclei -dast -H "User-Agent: $USER_AGENT" -silent -o results/dast/random_sample_scan.txt
 
+    # ALL
+    printf "%s %s\n" "all" "$(date)" >> /tmp/log
+    grep '\?' $TMP_PATH/endpoints.txt \
+    | nuclei -dast -H "User-Agent: $USER_AGENT" -silent -o results/dast/all_nuclei_scan.txt
+
+    printf "%s %s\n" "END" "$(date)" >> /tmp/log
     echo "[+] DAST Pipeline Finished. Check results/dast/"
-
 }
 
 function contentDiscovery() {
-    domainsFile="${1:=scope.txt}"
+    webFilteredFile="${1:=web.filtered.txt}"
+    urlsFile="${2:=urls.all.txt}"
+    domainsFile="${3:=scope.txt}"
     sed -i '/^$/d' $domainsFile
-    passiveUrlsFile="${2:=urls.passive.txt}"
     mkdir -p results
 
     # getting standard wordlists
@@ -607,10 +655,10 @@ function contentDiscovery() {
 
     # building custom wordlist
     for host in $(cat $domainsFile); do
-        grep -iE "$host" $passiveUrlsFile > $TMP_PATH/urls.$(url2path $host).txt
-        # TODO: also consider SPIDER urls
-        buildCustomWordlist $TMP_PATH/urls.$(url2path $host).txt $TMP_PATH/fuzz.custom.$(url2path $host).txt
-        rm $TMP_PATH/urls.$(url2path $host).txt
+        currentUrlsFile="$TMP_PATH/urls.$(url2path $host).txt"
+        grep -iE "$host" $urlsFile > $currentUrlsFile
+        buildCustomWordlist $currentUrlsFile $TMP_PATH/fuzz.custom.$(url2path $host).txt
+        rm $currentUrlsFile
     done
 
     cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
@@ -650,7 +698,7 @@ function logAndCall() {
     $functionName
     if [ $? -ne 0 ]; then
         echo "[-] $functionName failed" >> /var/tmp/log.txt
-        exit 1
+        # exit 1
     fi
     echo "finished $functionName: $(date)" >> /var/tmp/log.txt
 }
@@ -710,45 +758,40 @@ function urlDecode() {
 }
 
 function url2path() {
-    echo $1 | sed 's/^http[s]\?...//' | sed 's/\//_/g'
+    echo $1 | sed 's/^http[s]\?...//' | tr '/' '_' | tr ':' '_' | tr '?' '_' | tr '&' '_' | tr '=' '_'
 }
 
 function buildCustomWordlist() {
-    customUrlsFile="${1:?missing urls file}"
+    customUrlsFile="${1:?missing urls input file}"
     customWordlistFile="${2:?missing output file}"
     
     export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
-    cat $customUrlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sed 's/\/$//g' | sed '/^[;%\^\&]/d' | sort -u > $customWordlistFile".1"
-    # delete custom wordlist if it is too big
-    # TODO: consider use head verifing limit in settings variable 
-    if [ $(wc -l < $customWordlistFile".1") -gt 5000 ]; then
-        rm $customWordlistFile".1"
-        echo > $customWordlistFile".1"
-    fi
 
+    ## create a wordlist only considering the first path of the urls ($4), there is a limit to avoid too big wordlists
+    cat $customUrlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sed 's/\/$//g' | sed '/^[;%\^\&]/d' |
+    shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT | sort -u > $TMP_PATH/wordlist.custom.1.txt
+
+    ## create a ordlist considering the full path, but limiting similar paths
     cat $customUrlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\|ver\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
     {
         url = $0
-        n = split(url, paths, "/")
-        
-        key = paths[2] "-" length(substr(url, 0, index(url, "?")))
-        count[key]++
-
-        key2 = paths[2] "~~"
         hasDoubleTilde = index(url, "~~") > 0
-        if (hasDoubleTilde) {
-            count[key2]++
+        n = split(url, paths, "/")
+
+        if (!hasDoubleTilde) {
+            commonKey = paths[2] "-" length(substr(url, 0, index(url, "?")))
+            count[commonKey]++
+            if (count[commonKey] <= 5) {
+                print url
+            }
+        } else if (hasDoubleTilde) {
+            dtKey = paths[2] "~~"
+            count[dtKey]++
+            if (count[dtKey] <= 4) {
+                print url
+            }
         }
-        if (count[key] <= 5 && (!hasDoubleTilde || count[key2] <= 4)) {
-            print url
-        }
-    }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&]/d' | sort -u > $customWordlistFile".2"
-    # delete custom wordlist if it is too big
-    # TODO: consider use head verifing limit in settings variable
-    if [ $(wc -l < $customWordlistFile".2") -gt 10000 ]; then
-        rm $customWordlistFile".2"
-        echo > $customWordlistFile".2"
-    fi
-    cat $customWordlistFile".1" $customWordlistFile".2" | sort -u > $customWordlistFile
-    rm $customWordlistFile".1" $customWordlistFile".2"
+    }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&]/d' | shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT | sort -u > $TMP_PATH/wordlist.custom.2.txt
+
+    cat $TMP_PATH/wordlist.custom.[0-9].txt | sort -u > $customWordlistFile
 }
