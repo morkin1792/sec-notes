@@ -332,7 +332,8 @@ function subdomainCompilation() {
     cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.ns != null) | .host + " " + .ns[0]' -r > $TMP_PATH/dnsx.hosts.ns.txt
 
     cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
-    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn | awk '{print $1, substr($3,2,length($3)-2),substr($4, 2, length($4)-2)"_"substr($5,0,length($5)-1)}' > $TMP_PATH/hosts.ptr_asn.txt
+    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn -json | jq -r '(.host) + " " + (.ptr[0] // "null") + " " + (.asn["as-number"] // "null") + "_" + ((.asn["as-name"] // "null")| gsub(" "; "_"))' > $TMP_PATH/hosts.ptr_asn.txt
+
 
     rm -f ${resultsFile:?}
     while read -r subdomain ip; do
@@ -498,7 +499,7 @@ function spidering() {
     mkdir -p results
 
     mkdir -p pages/katana
-    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -xhr -sr -srd pages/katana -o urls.katana.txt >/dev/null
+    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -hl -xhr -sr -srd pages/katana -o urls.katana.txt >/dev/null
     
     gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap --blacklist ".(jpg|jpeg|gif|css|tif|tiff|png|ttf|woff|woff2|ico|svg)" -R -o pages/gospider
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
@@ -569,14 +570,14 @@ function customVulnScanning() {
     grep '\?' $TMP_PATH/endpoints.txt \
     | nuclei -dast -tags xss -H "User-Agent: $USER_AGENT" -silent -o results/dast/xss.nuclei.txt
 
-    printf "%s %s\n" "XSS dalfox B" "$(date)" >> /tmp/log
-    cat $TMP_PATH/endpoints.txt \
-    | gf xss \
-    | dalfox pipe --user-agent "$USER_AGENT" --skip-mining-all --detailed-analysis --deep-domxss --context-aware  --waf-evasion --timeout 11 --delay 300 --follow-redirects --max-cpu 2 --silence -o results/dast/xss.dalfox.B.txt
+    # printf "%s %s\n" "XSS dalfox B" "$(date)" >> /tmp/log
+    # cat $TMP_PATH/endpoints.txt \
+    # | gf xss \
+    # | dalfox pipe --user-agent "$USER_AGENT" --skip-mining-all --detailed-analysis --deep-domxss --context-aware --waf-evasion --timeout 11 --delay 300 --follow-redirects --max-cpu 2 --silence -o results/dast/xss.dalfox.B.txt
 
-    printf "%s %s\n" "XSS dalfox A" "$(date)" >> /tmp/log
-    grep '\?' $TMP_PATH/endpoints.txt \
-    | dalfox pipe --user-agent "$USER_AGENT" --skip-xss-scanning --timeout 8 --delay 100 --follow-redirects --max-cpu 3 -o results/dast/xss.dalfox.A.txt
+    # printf "%s %s\n" "XSS dalfox A" "$(date)" >> /tmp/log
+    # grep '\?' $TMP_PATH/endpoints.txt \
+    # | dalfox pipe --user-agent "$USER_AGENT" --skip-xss-scanning --timeout 8 --delay 100 --follow-redirects --max-cpu 3 -o results/dast/xss.dalfox.A.txt
 
     printf "%s %s\n" "XSStrike + params" "$(date)" >> /tmp/log
     while read -r url; do
