@@ -21,6 +21,7 @@ function checkRequirements() {
         'jq'                # pacman -S jq || apt install jq
         'yq'                # pacman -S yq || apt install yq
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+        'alterx'            # go install github.com/projectdiscovery/alterx/cmd/alterx@latest
         'shuffledns'        # go install -v github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest
         'massdns'           # yay -S massdns || (git clone https://github.com/blechschmidt/massdns.git && cd massdns && make && sudo make install)
         'chaos'             # go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
@@ -225,6 +226,7 @@ function passiveSubdomainDiscovery() {
     
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
     chaos -dL $domainsFile -o subdomains/chaos.txt
+    cat subdomains/chaos.txt | alterx > subdomains/alterx.txt
     grep '^*.' subdomains/chaos.txt | sed 's/^*[.]//' | sort -u > subdomains/chaos.tls.wildcard.txt
     sed -i 's/^*[.]//' subdomains/chaos.txt
 
@@ -332,13 +334,16 @@ function subdomainCompilation() {
     cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.ns != null) | .host + " " + .ns[0]' -r > $TMP_PATH/dnsx.hosts.ns.txt
 
     cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
-    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn -json | jq -r '(.host) + " " + (.ptr[0] // "null") + " " + (.asn["as-number"] // "null") + "_" + ((.asn["as-name"] // "null")| gsub(" "; "_"))' > $TMP_PATH/hosts.ptr_asn.txt
+    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn -json | jq -r '(.host) + " " + (.ptr[0] // "null") + " " + (.asn["as-number"] // "") + "_" + ((.asn["as-name"] // "")| gsub(" "; "_"))' > $TMP_PATH/hosts.ptr_asn.txt
 
 
     rm -f ${resultsFile:?}
     while read -r subdomain ip; do
         domain=$(getDomain $subdomain)
         asn=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $3}' | head -1)
+        if [ "$asn" = "_" ]; then
+            asn=""
+        fi
         cdn=$(grep "^$ip " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
         ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
         ns=$(grep "^$subdomain " $TMP_PATH/dnsx.hosts.ns.txt | awk '{print $2}' | head -1)
