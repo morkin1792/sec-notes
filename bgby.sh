@@ -235,7 +235,7 @@ function passiveSubdomainDiscovery() {
     chmod 600 "$TMP_PATH/provider-config.yaml"
     extraParam=""
     if [ $bigNumberOfDomains = true ]; then
-        # if there are many domains, disable some providers to avoid end of month quota issues
+        # if there are too many domains, disable some providers to avoid end of month quota issues
         extraParam="-es securitytrails,censys,shodan,whoisxmlapi"
     fi
     # apparently rls is not working at all (https://github.com/projectdiscovery/subfinder/issues/1434), but it is here for when they fix it
@@ -430,7 +430,7 @@ function reconAnalysis() {
     gobuster s3 -k --wordlist $TMP_PATH/hosts.txt --no-color -o results/buckets.s3.txt
 
     # GETTING WEB HOSTS
-    awk -F, '{print $2}' $hostsFile > $TMP_PATH/web.potential.txt
+    awk -F, '{print $2}' $hostsFile | tail +2 > $TMP_PATH/web.potential.txt
     if [ -s $rangesFile ]; then
         echo "[*] Adding IP ranges from $rangesFile to web potential targets"
         cut -d, -f2 $rangesFile | prips >> $TMP_PATH/web.potential.txt
@@ -439,8 +439,8 @@ function reconAnalysis() {
     httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l $TMP_PATH/web.potential.txt -json -o web.all.json
     jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
     filterWebUrls $webAllFile
-    # TODO: check preference for https
-    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|sort|tostring)' web.all.json | sort -ur | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
+
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|sort|tostring)' web.all.json | fixedSort | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
 
     # GETTING WEB SCREENSHOTS
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
@@ -737,6 +737,10 @@ EOF
     python3 "$tmp_python_script" "$input_file" "$output_file"
     mv $output_file $input_file
     rm -f "$tmp_python_script"
+}
+
+function fixedSort() {
+    python3 -c "import sys; print('\n'.join(sorted(sys.stdin.read().splitlines(), reverse=True)))" | uniq
 }
 
 function prips() {
