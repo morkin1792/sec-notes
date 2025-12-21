@@ -329,31 +329,28 @@ function subdomainCompilation() {
     resultsFile="${2:=hosts.csv}"
 
     rm -f ${TMP_PATH:?}/dnsx.subdomains.json
-    dnsx -silent -a -aaaa -cname -ns -mx -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
-    cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.a != null) | .host + " " + .a[0]' -r > $TMP_PATH/dnsx.hosts.a.txt
-    cat $TMP_PATH/dnsx.subdomains.json | jq 'select (.ns != null) | .host + " " + .ns[0]' -r > $TMP_PATH/dnsx.hosts.ns.txt
-
-    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
-    cat $TMP_PATH/dnsx.hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -asn -json | jq -r '(.host) + " " + (.ptr[0] // "null") + " " + (.asn["as-number"] // "") + "_" + ((.asn["as-name"] // "")| gsub(" "; "_"))' > $TMP_PATH/hosts.ptr_asn.txt
-
+    dnsx -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
+    cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.a != null) | .host + " " + .a[0]' > $TMP_PATH/hosts.a.txt
+    cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
+    cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.asn != null) | .host + " " + .asn["as-number"] + "_" + (.asn["as-name"] | gsub(" "; "_"))' > $TMP_PATH/hosts.asn.txt
+    cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
+    cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -json | jq -r '(.host) + " " + (.ptr[0] // "null")' > $TMP_PATH/hosts.ptr.txt
 
     rm -f ${resultsFile:?}
     while read -r subdomain ip; do
         domain=$(getDomain $subdomain)
-        asn=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $3}' | head -1)
-        if [ "$asn" = "_" ]; then
-            asn=""
-        fi
+        asn=$(grep "^$subdomain " $TMP_PATH/hosts.asn.txt | awk '{print $2}' | head -1)
         cdn=$(grep "^$ip " $TMP_PATH/hosts.cdn.txt | awk '{print $2}')
-        ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr_asn.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
-        ns=$(grep "^$subdomain " $TMP_PATH/dnsx.hosts.ns.txt | awk '{print $2}' | head -1)
+        ptr=$(grep "^$ip " $TMP_PATH/hosts.ptr.txt | awk '{print $2}' | tr '\n' '|' | sed 's/|$//')
+        ns=$(grep "^$subdomain " $TMP_PATH/hosts.ns.txt | awk '{print $2}' | head -1)
         line="$domain,$subdomain,$ip,${asn:-null},${cdn:-null},${ptr:-null},${ns:-null}"
         echo $line >> $resultsFile
-    done < $TMP_PATH/dnsx.hosts.a.txt
+    done < $TMP_PATH/hosts.a.txt
     sort $resultsFile -o $resultsFile
     sed -i "1i domain,subdomain,ip,asn,cdn,ptr,ns" $resultsFile
     
-    echo "[*] You may want to filter $resultsFile"
+    echo -e "[*] You may want to filter $resultsFile\nEx:"
+    grep -i 'AS0_not_routed' $resultsFile 
     # xdg-open $resultsFile
 }
 
