@@ -329,6 +329,7 @@ function subdomainCompilation() {
     resultsFile="${2:=hosts.csv}"
 
     rm -f ${TMP_PATH:?}/dnsx.subdomains.json
+    export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
     dnsx -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
     cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.a != null) | .host + " " + .a[0]' > $TMP_PATH/hosts.a.txt
     cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
@@ -546,8 +547,8 @@ function customVulnScanning() {
     targetFile="${1:=web.filtered.txt}"
     urlsFile="${2:=urls.all.txt}"
     
-    # TODO: consider POST requests 
-    #    - ?llama, gpt4all
+    # TODO: consider POST requests (coding something)
+    # - ?llama, gpt4all
 
     # TODO: more checks
     # - sqlmap
