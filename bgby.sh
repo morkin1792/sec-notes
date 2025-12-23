@@ -548,12 +548,10 @@ function spidering() {
     #hashcat results/jwts.txt --show
 
     
-    gitleaks dir pages -f csv -r results/secrets.gitleaks.csv
+    gitleaks dir pages -f csv -r results/secrets.gitleaks.complete.csv
+    grep -vE '^(generic-api-key|aws-access-token|jwt)' results/secrets.gitleaks.complete.csv > results/secrets.gitleaks.csv
     trufflehog filesystem ./pages --json > results/secrets.truffle.complete.json
     cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.json
-    # nipejs -d pages -json > results/secrets.nipejs.json
-
-    # TODO: check cognito 
 }
 
 function customVulnScanning() {
@@ -679,7 +677,9 @@ function contentDiscovery() {
     done
 
     cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
-    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -g -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json
+    echo "[*] Total fuzzing words: $(wc -l < $TMP_PATH/fuzz.all.txt)"
+    
+    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json # ? -g
 }
 
 function quickPortScanning() {
@@ -804,11 +804,11 @@ function buildCustomWordlist() {
     export IGNORE="js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf"
 
     ## create a wordlist only considering the first path of the urls ($4), there is a limit to avoid too big wordlists
-    cat $customUrlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)?" | sed 's/\?.*//' | sed 's/\/$//g' | sed '/^[;%\^\&]/d' |
-    shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT | sort -u > $TMP_PATH/wordlist.custom.1.txt
+    cat $customUrlsFile | awk -F/ '{print $4}' | grep -vE "\.($IGNORE)$|\.($IGNORE)\?" | sed 's/\?.*//' | sed 's/\=.*//' | sed 's/\/$//g' | sed '/^[;%\^\&]/d' | sort -u |
+    shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT > $TMP_PATH/wordlist.custom.1.txt
 
-    ## create a ordlist considering the full path, but limiting similar paths
-    cat $customUrlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\|ver\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)?" | awk '
+    ## create a ordlist considering the full path, but limiting similar paths and same paths but different parameters
+    cat $customUrlsFile | awk -F/ -vOFS=/ '{$1=$2=$3=""; print $0}' | sed 's/^..//' | grep -vE '^/\?' | sed 's/\?\(utm\_\|v\=\|ver\=\).*//' | sed 's/data\:image.*//' | grep -vEi "\.($IGNORE)$|\.($IGNORE)\?" | awk '
     {
         url = $0
         hasDoubleTilde = index(url, "~~") > 0
@@ -827,7 +827,7 @@ function buildCustomWordlist() {
                 print url
             }
         }
-    }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&]/d' | shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT | sort -u > $TMP_PATH/wordlist.custom.2.txt
+    }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&]/d' | awk -F'?' '{ key=tolower($1); if (++count[key] <= 3) print }' | sort -u | shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT > $TMP_PATH/wordlist.custom.2.txt
 
     cat $TMP_PATH/wordlist.custom.[0-9].txt | sort -u > $customWordlistFile
 }
