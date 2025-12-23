@@ -31,15 +31,16 @@ function checkRequirements() {
         'psl'               # pacman -S libpsl || apt install psl
         'katana'            # CGO_ENABLED=1 go install github.com/projectdiscovery/katana/cmd/katana@latest
         'gospider'          # go install github.com/jaeles-project/gospider@latest
+        'xnLinkFinder'      # pip install xnLinkFinder
         'gitleaks'          # pacman -S gitleaks || (git clone https://github.com/gitleaks/gitleaks.git; cd gitleaks; make build)
-        'nipejs'            # go install go install github.com/i5nipe/nipejs/v2@latest
-        'trufflehog'        # 
+        'trufflehog'        # yay -S trufflehog-bin || (git clone https://github.com/trufflesecurity/trufflehog.git; cd trufflehog; go install)
         'gowitness'         # go install github.com/sensepost/gowitness@latest (&& apt install chromium)
         'feroxbuster'       # yay -S feroxbuster-bin || cargo install feroxbuster || https://github.com/epi052/feroxbuster/releases
         'gobuster'          # go install github.com/OJ/gobuster/v3@latest
         'github-subdomains' # go install github.com/gwen001/github-subdomains@latest
         'subzy'             # go install -v github.com/PentestPad/subzy@latest
         'hashcat'           # pacman -S hashcat || apt install hashcat
+        'aws'               # pacman -S aws-cli || apt install awscli
         'nmap'              # pacman -S nmap || apt install nmap
         'nuclei'            # go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
         'afrog'             # go install -v github.com/zan8in/afrog/v3/cmd/afrog@latest
@@ -468,6 +469,7 @@ function vulnScanning() {
         wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
         for url in $(cat wordpress.txt); do
             wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
+            # TODO: consider add user enum + brute
         done
         nuclei -silent -l wordpress.txt -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
     fi
@@ -502,27 +504,29 @@ function spidering() {
     mkdir -p results
 
     mkdir -p pages/katana
-    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -hl -xhr -sr -srd pages/katana -o urls.katana.txt >/dev/null
+    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -xhr -sr -srd pages/katana -o urls.katana.txt >/dev/null
     
     gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap --blacklist ".(jpg|jpeg|gif|css|tif|tiff|png|ttf|woff|woff2|ico|svg)" -R -o pages/gospider
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
     grep -Eo -- "http[^ ]+($domains)[^ ]+" pages/gospider > urls.gospider.txt
 
-    sort -u urls.katana.txt urls.gospider.txt urls.passive.txt > $urlsFile
+    xnLinkFinder -i pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
+    grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > urls.xnlinkfinder.txt
+    sort -u urls.katana.txt urls.gospider.txt urls.xnlinkfinder.txt urls.passive.txt > $urlsFile
     
     # CHECKING AWS URLS
     grep -Rioh -Pa "[^\"'>= ]{0,70}(amazonaws|aws-s3)[^\"' ]{2,70}" pages | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/aws.urls.txt
     # trufflehog s3 --bucket=bucket name
 
-    # CHECKING NEW SUBDOMAINS
-    awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(sed 's/http[s]\?...//' urls.katana.txt | sed 's/\(\/.*\|.*@\)//g' | sort -u) > results/subdomains.new.txt
-    # TODO: instead of just saving, repeat everything from subdomainCompilation
+    # CHECKING FOR NEW SUBDOMAINS
+    awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(sed 's/http[s]\?...//' $urlsFile | sed 's/\(\/.*\|:.*\|.*@\|\?.*\)//g' | sort -u) > results/subdomains.new.txt
+    # TODO: maybe instead of just saving, repeat everything from subdomainCompilation
 
-    ## pentesting only
-    grep -REi 'http[s]?://[^/"\?]+' -aoh pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u > results/seeds.potential.txt
+    ## gather more potential seeds for pentests
+    grep -REi 'http[s]?://[^/"\?]+' -aoh pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|youtu[.]be|vimeo[.]com|wikipedia|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u | dnsx | getDomain | sort -u > results/seeds.potential.txt
 
     # CHECKING JWT TOKENS
-    grep -Eh -Roa "eyJ[^\"' ]{14,2048}" pages | urlDecode | sort -u > results/jwts.txt
+    grep -Eh -Roa "eyJ[A-Za-z0-9=_+-]+\.[A-Za-z0-9=_+-]+\.?[A-Za-z0-9=_+-]*" pages | urlDecode | sort -u > results/jwts.txt
     if [ ! -f $TMP_PATH/secrets.txt ]; then (
         mkdir -p $TMP_PATH/passwords/ && cd $_ && 
         curl -L https://weakpass.com/download/48/10_million_password_list_top_10000.txt.gz --output - | gunzip -c > 10_million_password_list_top_10000.txt
@@ -533,12 +537,21 @@ function spidering() {
         curl -LO https://raw.githubusercontent.com/wallarm/jwt-secrets/refs/heads/master/jwt.secrets.list 
         cat $TMP_PATH/passwords/* | sort -u > $TMP_PATH/secrets.txt
     ) fi
+    
+    while read -r jwt; do
+        [ -z "$jwt" ] && continue
+        export AWS_REGION=us-east-1
+        export AWS_DEFAULT_REGION=us-east-1
+        (aws cognito-idp get-user --access-token $jwt 2>&1 | grep -q 'Invalid Access Token') || echo $jwt >> results/jwts.cognito.txt
+    done < results/jwts.txt
     hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/jwts.cracked.txt
     #hashcat results/jwts.txt --show
+
     
     gitleaks dir pages -f csv -r results/secrets.gitleaks.csv
-    trufflehog filesystem ./pages --json > results/secrets.truffle.json
-    nipejs -d pages -json > results/secrets.nipejs.json
+    trufflehog filesystem ./pages --json > results/secrets.truffle.complete.json
+    cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.json
+    # nipejs -d pages -json > results/secrets.nipejs.json
 
     # TODO: check cognito 
 }
@@ -582,12 +595,12 @@ function customVulnScanning() {
     # grep '\?' $TMP_PATH/endpoints.txt \
     # | dalfox pipe --user-agent "$USER_AGENT" --skip-xss-scanning --timeout 8 --delay 100 --follow-redirects --max-cpu 3 -o results/dast/xss.dalfox.A.txt
 
-    printf "%s %s\n" "XSStrike + params" "$(date)" >> /tmp/log
-    while read -r url; do
-        echo "[*] Scanning $url"
-        # TODO: pipx install xsstrike
-        xsstrike --url "$url" --headers "User-Agent: $USER_AGENT" --log-file "results/dast/xss.xsstrike.log.$(url2path $url).txt" > results/dast/xss.xsstrike.out.$(url2path $url).txt
-    done < <(grep '\?' $TMP_PATH/endpoints.txt)
+    # printf "%s %s\n" "XSStrike + params" "$(date)" >> /tmp/log
+    # while read -r url; do
+    #     echo "[*] Scanning $url"
+    #     # TODO: pipx install xsstrike
+    #     xsstrike --url "$url" --headers "User-Agent: $USER_AGENT" --log-file "results/dast/xss.xsstrike.log.$(url2path $url).txt" > results/dast/xss.xsstrike.out.$(url2path $url).txt
+    # done < <(grep '\?' $TMP_PATH/endpoints.txt)
 
     # SQLi
     printf "%s %s\n" "sqli" "$(date)" >> /tmp/log
@@ -708,10 +721,25 @@ function logAndCall() {
 }
 
 function getDomain() {
-    local input="$1"
-    input="$(printf '%s' "$input" | sed 's/[.]*$//')"
-    psl -b --print-reg-domain -- "$input"
+    function getDomainCore() {
+        local input="$1"
+        input="$(printf '%s' "$input" | sed 's/[.]*$//')"
+        psl -b --print-reg-domain -- "$input"
+    }
+    if [ "$#" -gt 0 ]; then
+        for param in "$@"; do
+            getDomainCore "$param"
+        done
+    else
+        while read -r param; do
+            [ -z "$param" ] && continue
+            getDomainCore "$param"
+        done
+    fi
 }
+
+
+
 
 function filterWebUrls() {
     input_file="$1"
