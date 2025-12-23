@@ -13,7 +13,8 @@
     - add / at end of the path
     - check web cache deception
 - search code injection
-- fuzzing potencial parameter
+- fuzzing potential parameters
+    - https://github.com/s0md3v/Arjun
     - https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/Web-Content/burp-parameter-names.txt
 - fuzzing headers
     - web cache poison
