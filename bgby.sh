@@ -177,8 +177,8 @@ logAndCall subdomainCompilation
 logAndCall reconAnalysis
 logAndCall vulnScanning
 logAndCall spidering
-# logAndCall customVulnScanning
-# logAndCall contentDiscovery
+logAndCall customVulnScanning
+logAndCall contentDiscovery
 logAndCall quickPortScanning
 logAndCall portScanning # requires sudo
 "
@@ -351,8 +351,12 @@ function subdomainCompilation() {
     sort $resultsFile -o $resultsFile
     sed -i "1i domain,subdomain,ip,asn,cdn,ptr,ns" $resultsFile
     
-    echo -e "[*] You may want to filter $resultsFile\nEx:"
-    grep -i 'AS0_not_routed' $resultsFile 
+    echo -e "[*] You may want to filter $resultsFile"
+
+    AS0=$(grep -i 'AS0_not_routed' $resultsFile)
+    if [ ! -z "$AS0" ]; then
+        echo -e "Ex:\n$AS0"
+    fi
     # xdg-open $resultsFile
 }
 
@@ -509,7 +513,7 @@ function spidering() {
     
     gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap -R -o pages/gospider
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
-    grep -Eo -- "http[^ ]+($domains)[^ ]+" pages/gospider > urls.gospider.txt
+    grep -Rih -Eo -- "http[^ ]+($domains)[^<\"' ]+" pages/gospider | sort -u > urls.gospider.txt
 
     xnLinkFinder -i pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
     grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > urls.xnlinkfinder.txt
