@@ -50,11 +50,11 @@ Some tricks to use when testing Android Apps
             - B) **[No root]** Recompile the app modifying it to trust in User certificates: https://github.com/shroudedcode/apk-mitm
             - C) Hook the config: https://medium.com/keylogged/bypassing-androids-network-security-configuration-575819a8f317
     - B) **System Certificate**
-        - A) Android 9 or earlier: Turn /system writable (may not work in some devices running [Android 10+](https://android.stackexchange.com/a/220920))
-            - https://gist.github.com/morkin1792/b7d72267461121ad3ddbdf4c52785f24
+        - A) Magisk Modules (https://github.com/NVISOsecurity/AlwaysTrustUserCerts)
         - B) Via a custom recovery (like TWRP)
             - **[No straight root on Android]** Use the adb in recovery to have root file system access
-        - C) Magisk Modules (such as MagiskTrustUserCerts) 
+        - C) Android 9 or earlier: Turn /system writable (may not work in some devices running [Android 10+](https://android.stackexchange.com/a/220920))
+            - https://gist.github.com/morkin1792/b7d72267461121ad3ddbdf4c52785f24
         - D) Android 14: https://httptoolkit.com/blog/android-14-install-system-ca-certificate/
         - E) Android 13 or earlier: Mount a writable filesystem on the certificates directory
             * simple but not persistent
