@@ -69,18 +69,17 @@ function installCertViaRecovery() {
     if (adb shell whoami | grep root >/dev/null 2>&1); then 
         if (adb shell ls -lah /system/etc/security 2>&1 | grep -qi 'no such'); then
             echo "Using the Recovery, mount the partition System, then try again."
-            exit 1
-        fi
-        adb shell '
-    mv /data/local/tmp/*.0 /system/etc/security/cacerts/
-    chown root:root /system/etc/security/cacerts/*
-    chmod 644 /system/etc/security/cacerts/*
-    reboot
-    '
-    echo "Certificate installed successfully. Device is rebooting."
+         else
+            adb shell '
+                mv /data/local/tmp/*.0 /system/etc/security/cacerts/
+                chown root:root /system/etc/security/cacerts/*
+                chmod 644 /system/etc/security/cacerts/*
+                reboot
+             '
+             echo "Certificate installed successfully. Device is rebooting."
+         fi
     else
         echo "Restart the device in Recovery Mode (using a non stock (custom) recovery, such as TWRP or OrangeFox)."
-        exit 1
     fi
 }
 ```
