@@ -1,30 +1,30 @@
-# Android Application Pentesting - Part 0
+# Android Application Pentesting - Part 0 (Setup)
 Some tricks to use when testing Android Apps
 
 ## Setting proxy
-* A) Go to Settings > WiFi > Your network > Proxy, and fill in the proxy tool's ip address and port
-* B) if there is AP isolation: 
-    * In the computer: `adb reverse tcp:8080 tcp:8080`
-    * In the android: Set the WiFi proxy using `127.0.0.1` and `8080`
-* C) Apps ignoring the proxy (Flutter)
-    - A) **[🥇Recommended]** Rethink VPN (https://github.com/celzero/rethink-app)
-       * Change DNS settings to "System DNS", Add a HTTP(S) CONNECT proxy, Start the "VPN" 
-    - B) DNS poison + transparent proxy -> resolve all domains to a machine that have an http proxy running in ports 80 and 443.
-       * One way is using rethinkdns app, Change DNS settings to "Other DNS" > Select "Proxy DNS".
-    - C) ProxyDroid (available in playstore, root is required)
-    - D) iptables + transparent Proxy
-        * A) Use an WiFi adapter to create an AP on your computer and connect the Android
-        * B) (If the app does not need ipv6) Use your default WiFi router (without AP isolation) 
-            - Go to Settings > WiFi > Your network and fill in your computer's ip address as the gateway and the DNS server
-            - Search for "How to enable ip forwarding" in your computer's system, if it is a linux:
-                * https://linuxconfig.org/how-to-turn-on-off-ip-forwarding-in-linux
-            - Set the computer's firewall, if it is a linux:
-            ```sh
-            iptables -A INPUT -p udp --source $deviceAddr --dport 53 -j ACCEPT
-            iptables -A INPUT -p tcp --source $deviceAddr --dport 8080 -j ACCEPT
-            iptables -t nat -A PREROUTING -p tcp --source $deviceAddr -j REDIRECT --to-ports 8080
-            ```
-            - Start a DNS server ignoring ipv6, if it is a linux:
+
+Choose one of the options below:
+
+- A) **[🥇Recommended]** "Rethink VPN" app (available on Google Play, or also https://github.com/celzero/rethink-app)
+    * Change DNS settings to "System DNS", Add a HTTP(S) CONNECT proxy, and start the "VPN".
+    * If there is AP isolation in the WiFi network, connect the device via adb and run: `adb reverse tcp:8080 tcp:8080`. Then, consider that the proxy address is `127.0.0.1` and port `8080`.
+
+- B) Network Level (firewall + transparent Proxy)
+     - 1) Set the computer's firewall to redirect the device's traffic to a transparent proxy. If you are using linux:
+         ```sh
+         export deviceAddr="192.168..."
+         iptables -A INPUT -p udp --source $deviceAddr --dport 53 -j ACCEPT
+         iptables -A INPUT -p tcp --source $deviceAddr --dport 8080 -j ACCEPT
+         iptables -t nat -A PREROUTING -p tcp --source $deviceAddr -j REDIRECT --to-ports 8080
+         ``` 
+     - 2) Choose one of the options below:
+        * A) Create an AP on your computer and connect the Android.
+        * B) Use your regular WiFi router (assuming there is no AP isolation and the app does not need ipv6) 
+            - In your Android device: Go to Settings > WiFi, select the option to edit your wifi network. Then, fill the current ip address of the computer that is running the proxy as the gateway and the DNS server. Also define a different ip address for you android device.
+            - Search for "How to enable ip forwarding" in your system. If you are using linux:
+                * `sudo sysctl -w net.ipv4.ip_forward=1`
+                * For persistence, check `man 5 sysctl.d`
+            - Start a DNS server ignoring ipv6. If you are using linux:
             ```sh
             echo '
             no-resolv
@@ -40,40 +40,49 @@ Some tricks to use when testing Android Apps
             sudo dnsmasq -C ~/dnsmasq.conf --no-daemon
             ```
 
-## Setting CA certificate
+## Installing CA certificate
 * 1) Get the certificate file (http://burp, http://mitm.it, …)
 * 2) Install the certificate as a:
-    - A) **User Certificate** (via Settings / File Manager)
-        - Simple but problematic since Android 7 (https://android-developers.googleblog.com/2016/07/changes-to-trusted-certificate.html)
-        - You will need:
-            - A) Use an old Android system 
-            - B) **[No root]** Recompile the app modifying it to trust in User certificates: https://github.com/shroudedcode/apk-mitm
-            - C) Hook the config: https://medium.com/keylogged/bypassing-androids-network-security-configuration-575819a8f317
+    - A) **User Certificate** (via Settings / File Manager). 
+        - Problematic since Android 7 (https://android-developers.googleblog.com/2016/07/changes-to-trusted-certificate.html). You will need:
+            - A) Use a magisk/zygisk module (check System Certificate installation) 
+            - B) **[No requires root]** Recompile the app modifying it to trust in User certificates: https://github.com/shroudedcode/apk-mitm
+            - C) Hook the config to trust in user certs: https://medium.com/keylogged/bypassing-androids-network-security-configuration-575819a8f317
+            - D) Use a very old Android version
     - B) **System Certificate**
-        - A) Magisk Modules (https://github.com/NVISOsecurity/AlwaysTrustUserCerts)
-        - B) Via a custom recovery (like TWRP)
-            - **[No straight root on Android]** Use the adb in recovery to have root file system access
-        - C) Android 9 or earlier: Turn /system writable (may not work in some devices running [Android 10+](https://android.stackexchange.com/a/220920))
-            - https://gist.github.com/morkin1792/b7d72267461121ad3ddbdf4c52785f24
-        - D) Android 14: https://httptoolkit.com/blog/android-14-install-system-ca-certificate/
-        - E) Android 13 or earlier: Mount a writable filesystem on the certificates directory
-            * simple but not persistent
-```sh
-# source: https://app.hextree.io/courses/network-interception/ssl-interception/installing-certificate-in-system-store
-
-# Backup the existing system certificates to the user certs folder
-cp /system/etc/security/cacerts/* /data/misc/user/0/cacerts-added/
-
-# Create the in-memory mount on top of the system certs folder
-mount -t tmpfs tmpfs /system/etc/security/cacerts
-
-# copy all system certs and our user cert into the tmpfs system certs folder
-cp /data/misc/user/0/cacerts-added/* /system/etc/security/cacerts/
-
-# Fix any permissions & selinux context labels
-chown root:root /system/etc/security/cacerts/*
-chmod 644 /system/etc/security/cacerts/*
-chcon u:object_r:system_file:s0 /system/etc/security/cacerts/*
+        - A) Install a Magisk/Zygisk Module to make user certs be installed as System certs (https://github.com/NVISOsecurity/AlwaysTrustUserCerts), and then just install them as user certs (via settings/file manager).
+        - B) Via a custom recovery (such as TWRP)
+            - **[No requires root directly on Android]** Use the adb in recovery to have root file system access. Then install it:
+```bash
+function installCertViaRecovery() {
+    CERT="${1:?Provide a certificate file (cert.der) as an argument}"
+    function convertCert() {
+        CERT="${1:-}"
+        openssl x509 -inform DER -in $CERT -out ca.pem
+        name=$(openssl x509 -inform PEM -subject_hash_old -noout -in ca.pem)
+        mv ca.pem "$name".0
+        openssl x509 -inform PEM -text -noout -in "$name".0 >> "$name".0
+        openssl x509 -inform PEM -fingerprint -noout -in "$name".0 >> "$name".0
+        adb push "$name".0 /data/local/tmp && echo "Converted $CERT and sent to device (/data/local/tmp/$name.0)"
+    }
+    convertCert "$CERT"
+    if (adb shell whoami | grep root >/dev/null 2>&1); then 
+        if (adb shell ls -lah /system/etc/security 2>&1 | grep -qi 'no such'); then
+            echo "Using the Recovery, mount the partition System, then try again."
+            exit 1
+        fi
+        adb shell '
+    mv /data/local/tmp/*.0 /system/etc/security/cacerts/
+    chown root:root /system/etc/security/cacerts/*
+    chmod 644 /system/etc/security/cacerts/*
+    reboot
+    '
+    echo "Certificate installed successfully. Device is rebooting."
+    else
+        echo "Restart the device in Recovery Mode (using a non stock (custom) recovery, such as TWRP or OrangeFox)."
+        exit 1
+    fi
+}
 ```
 
 ## Bypassing root detection
