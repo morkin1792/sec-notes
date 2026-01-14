@@ -37,6 +37,8 @@ email[]=victim@mail&email[]=attacker@mail
 ## register
 - mass assignment admin
 - try use IDs already registered
+- if pre register and wait, pre-register + try reseting password
+
 
 ## edit user
 - change email/phone/cpf to someone already registered
