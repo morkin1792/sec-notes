@@ -1,5 +1,8 @@
 #!/bin/zsh
 
+# TODO: add custom header option
+# TODO: revalidate dns brute, some false negatives, maybe dnsx is better, maybe using massdns only if the number of targets is huge
+
 # TODO: look for more templates
 # TODO: look for similar projects (ex: NucleiFuzzer)
 # TODO: filter all stdout + log stderr
@@ -49,6 +52,7 @@ function checkRequirements() {
         'gf'                # go install -v github.com/tomnomnom/gf@latest && git clone https://github.com/1ndianl33t/Gf-Patterns ~/.gf
         'uro'               # pipx install uro
         'arjun'             # pipx install arjun
+        'flatsqli'          # go install github.com/morkin1792/flatsqli@latest
         'dalfox'            # go install github.com/hahwul/dalfox/v2@latest
         'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
         'nmap'              # pacman -S nmap || apt install nmap
@@ -175,10 +179,10 @@ local welcomeMsg="
 logAndCall subdomainDiscovery
 logAndCall subdomainCompilation
 logAndCall reconAnalysis
-logAndCall vulnScanning
 logAndCall spidering
-logAndCall customVulnScanning
 logAndCall contentDiscovery
+logAndCall customVulnScanning
+logAndCall vulnScanning
 logAndCall quickPortScanning
 logAndCall portScanning # requires sudo
 "
@@ -192,7 +196,7 @@ function subdomainDiscovery() {
     passiveSubdomainDiscovery $domainsFile
     activeSubdomainDiscovery $domainsFile
     # merge all subdomains
-    cat subdomains/* | sed 's/^[.-]//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
+    cat subdomains/* | sed 's/^[.-]//g' | sed 's/[.]$//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
 }
 
 function passiveSubdomainDiscovery() {
@@ -461,45 +465,6 @@ function reconAnalysis() {
     awk '!x[$0]++' $TMP_PATH/ips.txt > $ipsFile
 }
 
-function vulnScanning() {
-    webAllFile="${1:=web.all.txt}"
-    webFilteredFile="${2:=web.filtered.txt}"
-
-    mkdir -p results
-
-    # wordpress
-    nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
-    cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
-    if [ -s wordpress.txt ]; then
-        wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
-        for url in $(cat wordpress.txt); do
-            wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
-            # TODO: consider add user enum + brute
-        done
-        nuclei -silent -l wordpress.txt -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
-    fi
-
-    nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
-        -t http/exposures/apis/swagger-api.yaml \
-        -t http/exposures/apis/wadl-api.yaml \
-        -t http/exposures/apis/wsdl-api.yaml \
-        -t http/exposures/configs/exposed-vscode.yaml \
-        -t http/exposures/configs/git-config.yaml \
-        -t http/exposures/configs/laravel-env.yaml \
-        -t http/exposures/configs/phpinfo-files.yaml \
-        -t http/exposures/logs \
-        -t http/miscellaneous/directory-listing.yaml \
-        -t http/misconfiguration/aws/aws-object-listing.yaml \
-        -t http/misconfiguration/glpi-directory-listing.yaml \
-        -t http/misconfiguration/springboot \
-        -t http/takeovers
-    
-    nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume /tmp/nuclei-gold-resume.cfg
-    afrog -T $webFilteredFile -H "User-Agent: $USER_AGENT" -mhe 10 -o results/afrog.results.html
-    # TODO: ?ceye api key
-    # consider Retire.js
-}
-
 function spidering() {
     webFilteredFile="${1:=web.filtered.txt}"
     subdomainsFile="${2:=subdomains.all.txt}"
@@ -559,15 +524,76 @@ function spidering() {
     cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.json
 }
 
+function contentDiscovery() {
+    webFilteredFile="${1:=web.filtered.txt}"
+    urlsFile="${2:=urls.all.txt}"
+    domainsFile="${3:=scope.txt}"
+    sed -i '/^$/d' $domainsFile
+    mkdir -p results
+
+    # getting standard wordlists
+    curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
+
+    # building custom wordlist
+    for host in $(cat $domainsFile); do
+        currentUrlsFile="$TMP_PATH/urls.$(url2path $host).txt"
+        grep -iE "$host" $urlsFile > $currentUrlsFile
+        buildCustomWordlist $currentUrlsFile $TMP_PATH/fuzz.custom.$(url2path $host).txt
+        rm $currentUrlsFile
+    done
+
+    cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
+    echo "[*] Total fuzzing words: $(wc -l < $TMP_PATH/fuzz.all.txt)"
+    
+    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json # ? -g
+}
+
+function vulnScanning() {
+    webAllFile="${1:=web.all.txt}"
+    webFilteredFile="${2:=web.filtered.txt}"
+
+    mkdir -p results
+
+    # wordpress
+    nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
+    cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
+    if [ -s wordpress.txt ]; then
+        wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
+        for url in $(cat wordpress.txt); do
+            wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
+            # TODO: consider add user enum + brute
+        done
+        nuclei -silent -l wordpress.txt -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
+    fi
+
+    nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
+        -t http/exposures/apis/swagger-api.yaml \
+        -t http/exposures/apis/wadl-api.yaml \
+        -t http/exposures/apis/wsdl-api.yaml \
+        -t http/exposures/configs/exposed-vscode.yaml \
+        -t http/exposures/configs/git-config.yaml \
+        -t http/exposures/configs/laravel-env.yaml \
+        -t http/exposures/configs/phpinfo-files.yaml \
+        -t http/exposures/logs \
+        -t http/miscellaneous/directory-listing.yaml \
+        -t http/misconfiguration/aws/aws-object-listing.yaml \
+        -t http/misconfiguration/glpi-directory-listing.yaml \
+        -t http/misconfiguration/springboot \
+        -t http/takeovers
+    
+    nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume /tmp/nuclei-gold-resume.cfg
+    afrog -T $webFilteredFile -H "User-Agent: $USER_AGENT" -mhe 10 -o results/afrog.results.html
+    # TODO: ?ceye api key
+    # consider Retire.js
+}
+
 function customVulnScanning() {
     targetFile="${1:=web.filtered.txt}"
     urlsFile="${2:=urls.all.txt}"
     
     # TODO: consider POST requests (coding something)
-    # - ?llama, gpt4all
 
     # TODO: more checks
-    # - sqlmap
     # - dt: ?
     # - ssti: ?gossti, ?SSTImap
     # - ?ssrf: ?SSRFmap
@@ -609,6 +635,14 @@ function customVulnScanning() {
     fi
 
     mkdir -p results/dast
+
+    # SQLi
+    grep '\?' $TMP_PATH/endpoints.txt > $TMP_PATH/endpoints.with.parameters.txt
+    flatsqli detect -uf $TMP_PATH/endpoints.with.parameters.txt -H "User-Agent: $USER_AGENT" -o results/dast/flatsqli.md
+
+    cat $TMP_PATH/endpoints.txt \
+    | gf sqli \
+    | nuclei -dast -tags sqli -H "User-Agent: $USER_AGENT" -silent -o results/dast/sqli_potential.txt
     
     # Reflected XSS
     grep '\?' $TMP_PATH/endpoints.txt \
@@ -629,15 +663,6 @@ function customVulnScanning() {
     #     # TODO: pipx install xsstrike
     #     xsstrike --url "$url" --headers "User-Agent: $USER_AGENT" --log-file "results/dast/xss.xsstrike.log.$(url2path $url).txt" > results/dast/xss.xsstrike.out.$(url2path $url).txt
     # done < <(grep '\?' $TMP_PATH/endpoints.txt)
-
-    # SQLi
-    cat $TMP_PATH/endpoints.txt \
-    | gf sqli \
-    | nuclei -dast -tags sqli -H "User-Agent: $USER_AGENT" -silent -o results/dast/sqli_potential.txt
-    # pipx install git+https://github.com/r0oth3x49/ghauri.git
-    # ghauri -m <(grep '?' $TMP_PATH/endpoints.txt | shuf) --random-agent --batch --level=1 --threads=10
-
-    # sqlmap -m <(grep '?' $TMP_PATH/endpoints.txt | shuf) --random-agent --batch --level=1 --risk=1  --keep-alive --threads=10
 
     # LFI/RFI
     cat $TMP_PATH/endpoints.txt | gf lfi | nuclei -dast -tags lfi,rfi -H "User-Agent: $USER_AGENT" -silent -o results/dast/lfi.txt
@@ -680,29 +705,6 @@ function customVulnScanning() {
 
 }
 
-function contentDiscovery() {
-    webFilteredFile="${1:=web.filtered.txt}"
-    urlsFile="${2:=urls.all.txt}"
-    domainsFile="${3:=scope.txt}"
-    sed -i '/^$/d' $domainsFile
-    mkdir -p results
-
-    # getting standard wordlists
-    curl https://gist.githubusercontent.com/morkin1792/6f7d25599d1d1779e41cdf035938a28e/raw/wordlists.sh | zsh -c "source /dev/stdin; download \$BASE \$PHP \$JAVA \$ASP \$RUBY \$PYTHON && addDirsearch 'html' 'zip' 'rar' 'php' 'asp' 'jsp';cat \$dir/* | grep -Ev 'Contribed|ISAPI' | sort -u > $TMP_PATH/fuzz.wordlists.txt && rm -rf \${dir:?}"
-
-    # building custom wordlist
-    for host in $(cat $domainsFile); do
-        currentUrlsFile="$TMP_PATH/urls.$(url2path $host).txt"
-        grep -iE "$host" $urlsFile > $currentUrlsFile
-        buildCustomWordlist $currentUrlsFile $TMP_PATH/fuzz.custom.$(url2path $host).txt
-        rm $currentUrlsFile
-    done
-
-    cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
-    echo "[*] Total fuzzing words: $(wc -l < $TMP_PATH/fuzz.all.txt)"
-    
-    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json # ? -g
-}
 
 function quickPortScanning() {
     ipsFile="${1:=ips.txt}"
