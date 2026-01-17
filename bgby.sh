@@ -1,7 +1,6 @@
 #!/bin/zsh
 
 # TODO: add custom header option
-# TODO: revalidate dns brute, some false negatives, maybe dnsx is better, maybe using massdns only if the number of targets is huge
 
 # TODO: look for more templates
 # TODO: look for similar projects (ex: NucleiFuzzer)
@@ -9,6 +8,7 @@
 
 CONFIG_FILE="$HOME/.bgby.yaml"
 TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M:%S")_XXXXXXXX)
+SHARED_DIR=".files"
 
 
 if [ -z $ZSH_VERSION ]; then
@@ -25,8 +25,6 @@ function checkRequirements() {
         'yq'                # pacman -S yq || apt install yq
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         'alterx'            # go install github.com/projectdiscovery/alterx/cmd/alterx@latest
-        'shuffledns'        # go install -v github.com/projectdiscovery/shuffledns/cmd/shuffledns@latest
-        'massdns'           # yay -S massdns || (git clone https://github.com/blechschmidt/massdns.git && cd massdns && make && sudo make install)
         'chaos'             # go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
         'httpx'             # go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
         'dnsx'              # go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
@@ -177,7 +175,6 @@ echo Using $TMP_PATH as temporary space
 
 local welcomeMsg="
 logAndCall subdomainDiscovery
-logAndCall subdomainCompilation
 logAndCall reconAnalysis
 logAndCall spidering
 logAndCall contentDiscovery
@@ -192,16 +189,18 @@ function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
     subdomainsFile="${2:=subdomains.all.txt}"
+    resultsFile="${3:=hosts.csv}"
 
-    passiveSubdomainDiscovery $domainsFile
-    activeSubdomainDiscovery $domainsFile
-    # merge all subdomains
-    cat subdomains/* | sed 's/^[.-]//g' | sed 's/[.]$//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
+    passiveSubdomainDiscovery $domainsFile $subdomainsFile
+    activeSubdomainDiscovery $domainsFile $subdomainsFile
+    subdomainCompilation $resultsFile
 }
 
 function passiveSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
+    subdomainsFile="${2:=subdomains.all.txt}"
+
 
     bigNumberOfDomains=false
     if [ $(wc -l < $domainsFile) -gt 20 ]; then
@@ -213,28 +212,28 @@ function passiveSubdomainDiscovery() {
         domain="${1:?missing domain}"
         curl -s "https://crt.sh/?q=$domain" -H "User-Agent: $USER_AGENT" | grep -iEo "<TD>[^<>]+?$domain|<BR>[^<>]+?$domain" | sed 's/^<..>//g' | sort -u
     }
-    mkdir -p subdomains
+    mkdir -p $SHARED_DIR/subdomains.passive
     for domain in $(cat $domainsFile); do
-        checkCrt $domain >> subdomains/crt.txt
+        checkCrt $domain >> $SHARED_DIR/subdomains.passive/crt.txt
         export GITHUB_TOKEN=$(yq -r '.apikeys.github[]' "$CONFIG_FILE" | tr '\n' ',' | sed 's/,$//')
-        github-subdomains -d $domain -o subdomains/github.$domain.txt >> $TMP_PATH/github-subdomains.output.txt
+        github-subdomains -d $domain -o $SHARED_DIR/subdomains.passive/github.$domain.txt >> $TMP_PATH/github-subdomains.output.txt
         if [ $bigNumberOfDomains = false ]; then
             # required for rate limiting, but ignored if there are many domains
             sleep 60
         fi
     done
-    grep '^*.' subdomains/crt.txt | sed 's/^*.//' | sort -u > subdomains/crt.tls.wildcard.txt
-    sed -i 's/^*.//' subdomains/crt.txt
+    grep '^*.' $SHARED_DIR/subdomains.passive/crt.txt | sed 's/^*.//' | sort -u > $SHARED_DIR/subdomains.passive/crt.tls.wildcard.txt
+    sed -i 's/^*.//' $SHARED_DIR/subdomains.passive/crt.txt
 
     cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
     #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
     
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
-    chaos -dL $domainsFile -o subdomains/chaos.txt
-    cat subdomains/chaos.txt | alterx > subdomains/alterx.txt
-    grep '^*.' subdomains/chaos.txt | sed 's/^*[.]//' | sort -u > subdomains/chaos.tls.wildcard.txt
-    sed -i 's/^*[.]//' subdomains/chaos.txt
-
+    mkdir -p $SHARED_DIR
+    chaos -dL $domainsFile -o $SHARED_DIR/chaos.original.txt
+    cp $SHARED_DIR/chaos.original.txt $SHARED_DIR/subdomains.passive/chaos.txt
+    grep '^*.' $SHARED_DIR/subdomains.passive/chaos.txt | sed 's/^*[.]//' | sort -u > $SHARED_DIR/subdomains.passive/chaos.tls.wildcard.txt
+    sed -i 's/^*[.]//' $SHARED_DIR/subdomains.passive/chaos.txt
 
     yq -y '.apikeys' "$CONFIG_FILE" > "$TMP_PATH/provider-config.yaml"
     chmod 600 "$TMP_PATH/provider-config.yaml"
@@ -244,7 +243,7 @@ function passiveSubdomainDiscovery() {
         extraParam="-es securitytrails,censys,shodan,whoisxmlapi"
     fi
     # apparently rls is not working at all (https://github.com/projectdiscovery/subfinder/issues/1434), but it is here for when they fix it
-    subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -rls "censys=1/s,virustotal=1/s,intelx=2/s,certspotter=1/s,alienvault=10/s" -o subdomains/subfinder.$(date +"%s").txt $extraParam
+    subfinder -all -dL $domainsFile -pc $TMP_PATH/provider-config.yaml -rls "censys=1/s,virustotal=1/s,intelx=2/s,certspotter=1/s,alienvault=10/s" -o $SHARED_DIR/subdomains.passive/subfinder.$(date +"%s").txt $extraParam
 
     local gau_config="
 threads = 2
@@ -272,18 +271,20 @@ json = false
 
     # passive url gathering
     cat $domainsFile | gau --config $TMP_PATH/gau.toml --subs --o $TMP_PATH/gau.output.txt
-    mkdir -p pages/waymore
-    waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR pages/waymore
+    mkdir -p $SHARED_DIR/pages/waymore
+    waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR $SHARED_DIR/pages/waymore
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
     grep -Eih "[^/:>\"\`( =@]*($domains)[^><)\`\" ;,\!]*" -Ro pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
-    sort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > urls.passive.txt
+    sort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > $SHARED_DIR/urls.passive.txt
     # extracting subdomains from urls
-    cat urls.passive.txt | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > subdomains/gau_waymore.txt
+    cat $SHARED_DIR/urls.passive.txt | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > $SHARED_DIR/subdomains.passive/gau_waymore.txt
+    cat $SHARED_DIR/subdomains.passive/* | sed 's/^[.-]//g' | sed 's/[.]$//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
 }
 
 function activeSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
+    subdomainsFile="${2:=subdomains.all.txt}"
     
     function zoneTransfer() {
         domain="${1:?missing domain}"
@@ -293,22 +294,40 @@ function activeSubdomainDiscovery() {
     }
     dnsx -axfr -silent -no-color -l $domainsFile -o $TMP_PATH/targets.zonetransfer.txt
     for ztTarget in $(cat $TMP_PATH/targets.zonetransfer.txt); do
-        zoneTransfer $ztTarget >> subdomains/zonetransfer.txt
+        zoneTransfer $ztTarget >> $TMP_PATH/zonetransfer.txt
     done
+    if [ -s $TMP_PATH/zonetransfer.txt ]; then
+        cp $subdomainsFile $TMP_PATH/subdomains.before.zonetransfer.txt
+        echo "[*] Zone transfer successful for some domains, adding the following subdomains to the list:"
+        sort -u $TMP_PATH/subdomains.before.zonetransfer.txt $TMP_PATH/zonetransfer.txt > $subdomainsFile
+    fi
+
+    # getting dns resolvers
+    curl -L https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt -o $TMP_PATH/resolvers.txt
+
+    # resolving subdomains
+    mkdir -p $SHARED_DIR
+    rm -f $SHARED_DIR/dnsx.subdomains.json
+    export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
+    dnsx -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $SHARED_DIR/dnsx.passive.json >/dev/null
+    
+    if [ ! -f $SHARED_DIR/chaos.original.txt ]; then
+        chaos -dL $domainsFile -o $SHARED_DIR/chaos.original.txt
+    fi
+    cat $SHARED_DIR/chaos.original.txt | alterx > $TMP_PATH/alterx.txt
+    dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $TMP_PATH/alterx.txt -o $SHARED_DIR/dnsx.alterx.json >/dev/null
 
     # getting dns wordlist
     curl -o $TMP_PATH/services-names.txt -L 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/services-names.txt'
     curl -o $TMP_PATH/subdomains-top1million-110000.txt -L 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/subdomains-top1million-110000.txt'
     curl -o $TMP_PATH/n0kovo_subdomains_small.txt -L 'https://raw.githubusercontent.com/n0kovo/n0kovo_subdomains/refs/heads/main/n0kovo_subdomains_small.txt'
-    cat $TMP_PATH/services-names.txt $TMP_PATH/subdomains-top1million-110000.txt $TMP_PATH/n0kovo_subdomains_small.txt | sort -u > $TMP_PATH/subdomain.list.txt
+    cat $TMP_PATH/services-names.txt $TMP_PATH/subdomains-top1million-110000.txt $TMP_PATH/n0kovo_subdomains_small.txt | sort -u > $TMP_PATH/subdomain.wordlist.txt
 
-    # getting dns resolvers
-    curl -L https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt -o $TMP_PATH/resolvers.txt
 
     # preparing dns targets
     cat $domainsFile > $TMP_PATH/brute.dns.potential.txt
     echo >> $TMP_PATH/brute.dns.potential.txt
-    cat subdomains/*.tls.wildcard.txt >> $TMP_PATH/brute.dns.potential.txt
+    cat $SHARED_DIR/subdomains.passive/*.tls.wildcard.txt >> $TMP_PATH/brute.dns.potential.txt
 
     # removing crazy dns wildcards
     awk '!seen[$0]++' $TMP_PATH/brute.dns.potential.txt | sed '/^$/d' > $TMP_PATH/brute.dns.potential.uniq.txt
@@ -320,25 +339,20 @@ function activeSubdomainDiscovery() {
 
     # bruting dns targets
     for domain in $(cat $TMP_PATH/brute.dns.targets.txt); do
-        shuffledns -d $domain -w $TMP_PATH/subdomain.list.txt -r $TMP_PATH/resolvers.txt -mode bruteforce -t 1000 -o $TMP_PATH/brute.$domain.txt
-        # removing false positives lines from shuffledns output
-        grep -i "$domain" $TMP_PATH/brute.$domain.txt > subdomains/brute.$domain.txt
-
-        # removing some \x00 (null) characters from shuffledns output
-        sed -i 's/\x00//g' subdomains/brute.$domain.txt
+        dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d $domain -w $TMP_PATH/subdomain.wordlist.txt -o $SHARED_DIR/dnsx.brute.json >/dev/null
     done
 }
 
 function subdomainCompilation() {
-    subdomainsFile="${1:=subdomains.all.txt}"
-    resultsFile="${2:=hosts.csv}"
+    resultsFile="${1:=hosts.csv}"
+    subdomainsFile="${2:=subdomains.all.txt}"
 
-    rm -f ${TMP_PATH:?}/dnsx.subdomains.json
+    cat $SHARED_DIR/dnsx.*.json > $TMP_PATH/dnsx.all.json
+
+    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null) | .host + " " + .a[0]' > $TMP_PATH/hosts.a.txt
+    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
+    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.asn != null) | .host + " " + .asn["as-number"] + "_" + (.asn["as-name"] | gsub(" "; "_"))' > $TMP_PATH/hosts.asn.txt
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
-    dnsx -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
-    cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.a != null) | .host + " " + .a[0]' > $TMP_PATH/hosts.a.txt
-    cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
-    cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.asn != null) | .host + " " + .asn["as-number"] + "_" + (.asn["as-name"] | gsub(" "; "_"))' > $TMP_PATH/hosts.asn.txt
     cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
     cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -json | jq -r '(.host) + " " + (.ptr[0] // "null")' > $TMP_PATH/hosts.ptr.txt
 
@@ -355,6 +369,12 @@ function subdomainCompilation() {
     sort $resultsFile -o $resultsFile
     sed -i "1i domain,subdomain,ip,asn,cdn,ptr,ns" $resultsFile
     
+    ## updating $subdomainsFile to make sure it has new subdomains from active discovery phase
+    cat $TMP_PATH/hosts.a.txt | awk '{print $1}' | sort -u > $TMP_PATH/subdomains.resolved.txt
+    sort -u $subdomainsFile $TMP_PATH/subdomains.resolved.txt > $TMP_PATH/subdomains.updated.txt
+    mv $TMP_PATH/subdomains.updated.txt $subdomainsFile
+
+
     echo -e "[*] You may want to filter $resultsFile"
 
     AS0=$(grep -i 'AS0_not_routed' $resultsFile)
@@ -369,20 +389,16 @@ function reconAnalysis() {
     hostsFile="${2:=hosts.csv}"
     rangesFile="${3:=ranges.txt}"
     # output files
-    webAllFile="${4:=web.all.txt}"
-    webFilteredFile="${5:=web.filtered.txt}"
-    ipsFile="${6:=ips.txt}"
+    webAllFile="${4:=$SHARED_DIR/web.all.txt}"
+    webFilteredFile="${5:=$SHARED_DIR/web.filtered.txt}"
+    ipsFile="${6:=$SHARED_DIR/ips.txt}"
 
     mkdir -p results
 
     function checkUnregisteredTakeover() {
-        local subdomainsFile="$1"
-
-        if [ ! -f "$TMP_PATH/dnsx.subdomains.json" ]; then
-            dnsx -silent -a -aaaa -cname -ns -mx -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $TMP_PATH/dnsx.subdomains.json >/dev/null
-        fi
+        cat $SHARED_DIR/dnsx.*.json > $TMP_PATH/dnsx.all.json
         # cname
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.cname != null and .status_code == "NXDOMAIN") | .host + " " + .cname[-1]' | grep -vE 'elb[.]amazonaws[.]com$' > $TMP_PATH/dnsx.cname.nxdomain.txt
+        cat $TMP_PATH/dnsx.all.json | jq -r 'select (.cname != null and .status_code == "NXDOMAIN") | .host + " " + .cname[-1]' | grep -vE 'elb[.]amazonaws[.]com$' > $TMP_PATH/dnsx.cname.nxdomain.txt
         while read -r initialHost finalHost; do
             if (getDomain $finalHost | dnsx -silent -rcode nxdomain | grep -q NXDOMAIN); then
                 echo "[CNAME -> NXDOMAIN] $initialHost -> $finalHost"
@@ -391,11 +407,11 @@ function reconAnalysis() {
 
         # alias
         # if is in rcode is NOERROR and has no A, AAAA or CNAME, then potential alias
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r 'select (.a == null and .cname == null and .aaaa == null and .status_code == "NOERROR") | .host' > $TMP_PATH/alias.potential.txt
-        # TODO: check ip address history and try to figure out the service
+        cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a == null and .cname == null and .aaaa == null and .status_code == "NOERROR") | .host' > $TMP_PATH/alias.potential.txt
+        # MAYBE TODO: check ip address history and try to figure out the service
 
         # ns
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r '
+        cat $TMP_PATH/dnsx.all.json | jq -r '
         select(.ns and (.ns | map(select(. != "")) | length > 0))
         | .host as $h
         | .ns[]
@@ -411,7 +427,7 @@ function reconAnalysis() {
             grep -i "$nsnx" $TMP_PATH/dnsx.ns.txt | sed 's/ / -> /g' | sed 's/^/[NS -> NXDOMAIN] /g'
         done
         # mx
-        cat $TMP_PATH/dnsx.subdomains.json | jq -r '
+        cat $TMP_PATH/dnsx.all.json | jq -r '
             select(.mx and (.mx | map(select(. != "")) | length > 0))
             | .host as $h
             | .mx[]
@@ -428,7 +444,7 @@ function reconAnalysis() {
         done
     }
     
-    checkUnregisteredTakeover $subdomainsFile > results/takeover.unregistered.potential.txt
+    checkUnregisteredTakeover > results/takeover.unregistered.potential.txt
 
     subzy run --targets $subdomainsFile --hide_fails --vuln --output results/takeover.subzy.txt
     
@@ -447,11 +463,11 @@ function reconAnalysis() {
         cut -d, -f2 $rangesFile | prips >> $TMP_PATH/web.potential.txt
     fi
 
-    httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l $TMP_PATH/web.potential.txt -json -o web.all.json
-    jq -r '.url' web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
+    httpx -p http:80,8080,8000,8008,8888,9090,9091,https:443,8443 -fr -l $TMP_PATH/web.potential.txt -json -o $SHARED_DIR/web.all.json
+    jq -r '.url' $SHARED_DIR/web.all.json | sed 's/[:]\(80\|443\)$//g' > $webAllFile
     filterWebUrls $webAllFile
 
-    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|sort|tostring)' web.all.json | fixedSort | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
+    jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|sort|tostring)' $SHARED_DIR/web.all.json | fixedSort | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
 
     # GETTING WEB SCREENSHOTS
     mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
@@ -466,23 +482,23 @@ function reconAnalysis() {
 }
 
 function spidering() {
-    webFilteredFile="${1:=web.filtered.txt}"
-    subdomainsFile="${2:=subdomains.all.txt}"
-    domainsFile="${3:=scope.txt}"
+    domainsFile="${1:=scope.txt}"
+    webFilteredFile="${2:=$SHARED_DIR/web.filtered.txt}"
+    subdomainsFile="${3:=$SHARED_DIR/subdomains.all.txt}"
     # output files
     urlsFile="${4:=urls.all.txt}"
     mkdir -p results
 
-    mkdir -p pages/katana
-    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -xhr -sr -srd pages/katana -o urls.katana.txt >/dev/null
+    mkdir -p $SHARED_DIR/pages/katana
+    katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -xhr -sr -srd $SHARED_DIR/pages/katana -o $SHARED_DIR/urls.katana.txt >/dev/null
     
-    gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap -R -o pages/gospider
+    gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap -R -o $SHARED_DIR/pages/gospider
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
-    grep -Rih -Eo -- "http[^ ]+($domains)[^<\"' ]+" pages/gospider | sort -u > urls.gospider.txt
+    grep -Rih -Eo -- "http[^ ]+($domains)[^<\"' ]+" $SHARED_DIR/pages/gospider | sort -u > $SHARED_DIR/urls.gospider.txt
 
     xnLinkFinder -i pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
-    grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > urls.xnlinkfinder.txt
-    sort -u urls.katana.txt urls.gospider.txt urls.xnlinkfinder.txt urls.passive.txt | grep -vE '/[a-z0-9]{40}\.txt' > $urlsFile
+    grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > $SHARED_DIR/urls.xnlinkfinder.txt
+    sort -u $SHARED_DIR/urls.katana.txt $SHARED_DIR/urls.gospider.txt $SHARED_DIR/urls.xnlinkfinder.txt $SHARED_DIR/urls.passive.txt | grep -vE '/[a-z0-9]{40}\.txt' > $urlsFile
     
     # CHECKING FOR BUCKETS
     # trufflehog s3 --bucket=bucket name
@@ -525,9 +541,9 @@ function spidering() {
 }
 
 function contentDiscovery() {
-    webFilteredFile="${1:=web.filtered.txt}"
-    urlsFile="${2:=urls.all.txt}"
-    domainsFile="${3:=scope.txt}"
+    domainsFile="${1:=scope.txt}"
+    webFilteredFile="${2:=$SHARED_DIR/web.filtered.txt}"
+    urlsFile="${3:=urls.all.txt}"
     sed -i '/^$/d' $domainsFile
     mkdir -p results
 
@@ -548,47 +564,8 @@ function contentDiscovery() {
     cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json # ? -g
 }
 
-function vulnScanning() {
-    webAllFile="${1:=web.all.txt}"
-    webFilteredFile="${2:=web.filtered.txt}"
-
-    mkdir -p results
-
-    # wordpress
-    nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
-    cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > wordpress.txt
-    if [ -s wordpress.txt ]; then
-        wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
-        for url in $(cat wordpress.txt); do
-            wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
-            # TODO: consider add user enum + brute
-        done
-        nuclei -silent -l wordpress.txt -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
-    fi
-
-    nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
-        -t http/exposures/apis/swagger-api.yaml \
-        -t http/exposures/apis/wadl-api.yaml \
-        -t http/exposures/apis/wsdl-api.yaml \
-        -t http/exposures/configs/exposed-vscode.yaml \
-        -t http/exposures/configs/git-config.yaml \
-        -t http/exposures/configs/laravel-env.yaml \
-        -t http/exposures/configs/phpinfo-files.yaml \
-        -t http/exposures/logs \
-        -t http/miscellaneous/directory-listing.yaml \
-        -t http/misconfiguration/aws/aws-object-listing.yaml \
-        -t http/misconfiguration/glpi-directory-listing.yaml \
-        -t http/misconfiguration/springboot \
-        -t http/takeovers
-    
-    nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume /tmp/nuclei-gold-resume.cfg
-    afrog -T $webFilteredFile -H "User-Agent: $USER_AGENT" -mhe 10 -o results/afrog.results.html
-    # TODO: ?ceye api key
-    # consider Retire.js
-}
-
 function customVulnScanning() {
-    targetFile="${1:=web.filtered.txt}"
+    targetFile="${1:=$SHARED_DIR/web.filtered.txt}"
     urlsFile="${2:=urls.all.txt}"
     
     # TODO: consider POST requests (coding something)
@@ -705,15 +682,56 @@ function customVulnScanning() {
 
 }
 
+function vulnScanning() {
+    webAllFile="${1:=$SHARED_DIR/web.all.txt}"
+    webFilteredFile="${2:=$SHARED_DIR/web.filtered.txt}"
+
+    mkdir -p results
+
+    # wordpress
+    nuclei -silent -l $webAllFile -H "User-Agent: $USER_AGENT" -t http/technologies/wordpress-detect.yaml -o $TMP_PATH/wordpress.txt
+    cat $TMP_PATH/wordpress.txt | awk '{ print $4 }' | sed 's/\/$//' | sort -u > $SHARED_DIR/wordpress.txt
+    if [ -s $SHARED_DIR/wordpress.txt ]; then
+        wpApiKeys=$(yq -y '.apikeys.wpscan' "$CONFIG_FILE" | sed 's/- //')
+        for url in $(cat $SHARED_DIR/wordpress.txt); do
+            wpscan --random-user-agent --disable-tls-checks --enumerate vp --url $url -o results/wpscan.$(url2path $url).txt --api-token $(echo $wpApiKeys | shuf -n1)
+            # TODO: consider add user enum + brute
+            # ?detection aggressive
+            # ?--enumerate vt
+        done
+        nuclei -silent -l $SHARED_DIR/wordpress.txt -H "User-Agent: $USER_AGENT" -tags wordpress,wp-plugin -o results/nuclei.wordpress.txt
+    fi
+
+    nuclei -l $webAllFile -H "User-Agent: $USER_AGENT" -o results/nuclei.sniper.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 \
+        -t http/exposures/apis/swagger-api.yaml \
+        -t http/exposures/apis/wadl-api.yaml \
+        -t http/exposures/apis/wsdl-api.yaml \
+        -t http/exposures/configs/exposed-vscode.yaml \
+        -t http/exposures/configs/git-config.yaml \
+        -t http/exposures/configs/laravel-env.yaml \
+        -t http/exposures/configs/phpinfo-files.yaml \
+        -t http/exposures/logs \
+        -t http/miscellaneous/directory-listing.yaml \
+        -t http/misconfiguration/aws/aws-object-listing.yaml \
+        -t http/misconfiguration/glpi-directory-listing.yaml \
+        -t http/misconfiguration/springboot \
+        -t http/takeovers
+    
+    nuclei -l $webFilteredFile -H "User-Agent: $USER_AGENT" -o results/nuclei.gold.results.txt -stats -retries 4 -timeout 35 -mhe 999999 -rate-limit 100 -bulk-size 100 -exclude-severity info -etags wordpress,wp-plugin,tech,ssl -resume /tmp/nuclei-gold-resume.cfg
+    afrog -T $webFilteredFile -H "User-Agent: $USER_AGENT" -mhe 10 -o results/afrog.results.html
+    # TODO: ?ceye api key
+    # consider Retire.js
+}
+
 
 function quickPortScanning() {
-    ipsFile="${1:=ips.txt}"
+    ipsFile="${1:=$SHARED_DIR/ips.txt}"
     naabu -Pn -exclude-cdn -exclude-ports 80,443 -list $ipsFile -o results/naabu.quick.tcp.txt
     nmap -Pn -n -v3 --open -iL $ipsFile -oG results/nmap.quick.tcp.txt -p 21,22,23,445,1433,1521,2049,3306,3389,5432,5900
 }
 
 function portScanning() {
-    ipsFile="${1:=ips.txt}"
+    ipsFile="${1:=$SHARED_DIR/ips.txt}"
     sudo -v
     RUNNING=1
     while [ $RUNNING -eq 1 ]; do
@@ -805,9 +823,6 @@ function getDomain() {
         done
     fi
 }
-
-
-
 
 function filterWebUrls() {
     input_file="$1"
