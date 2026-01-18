@@ -350,7 +350,7 @@ function subdomainCompilation() {
 
     cat $SHARED_DIR/dnsx.*.json > $TMP_PATH/dnsx.all.json
 
-    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null) | .host + " " + .a[0]' > $TMP_PATH/hosts.a.txt
+    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null) | .host + " " + .a[0]' | sort -u > $TMP_PATH/hosts.a.txt
     cat $TMP_PATH/dnsx.all.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
     cat $TMP_PATH/dnsx.all.json | jq -r 'select (.asn != null) | .host + " " + .asn["as-number"] + "_" + (.asn["as-name"] | gsub(" "; "_"))' > $TMP_PATH/hosts.asn.txt
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
