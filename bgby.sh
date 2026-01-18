@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 # TODO: add custom header option
+# TODO: consider size of dnsx.brute.json
 
 # TODO: look for more templates
 # TODO: look for similar projects (ex: NucleiFuzzer)
@@ -340,7 +341,7 @@ function activeSubdomainDiscovery() {
 
     # bruting dns targets
     for domain in $(cat $TMP_PATH/brute.dns.targets.txt); do
-        dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d $domain -w $TMP_PATH/subdomain.wordlist.txt -o $SHARED_DIR/dnsx.brute.json >/dev/null
+        dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d $domain -w $TMP_PATH/subdomain.wordlist.txt -o $SHARED_DIR/dnsx.brute.json >/dev/null        
     done
 }
 
@@ -350,9 +351,10 @@ function subdomainCompilation() {
 
     cat $SHARED_DIR/dnsx.*.json > $TMP_PATH/dnsx.all.json
 
-    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null) | .host + " " + .a[0]' | sort -u > $TMP_PATH/hosts.a.txt
+    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null and .status_code == "NOERROR") | .host + " " + .a[0]' | awk '!seen[$1]++' > $TMP_PATH/hosts.a.txt
     cat $TMP_PATH/dnsx.all.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
     cat $TMP_PATH/dnsx.all.json | jq -r 'select (.asn != null) | .host + " " + .asn["as-number"] + "_" + (.asn["as-name"] | gsub(" "; "_"))' > $TMP_PATH/hosts.asn.txt
+    rm $TMP_PATH/dnsx.all.json
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
     cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
     cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -json | jq -r '(.host) + " " + (.ptr[0] // "null")' > $TMP_PATH/hosts.ptr.txt
@@ -444,6 +446,8 @@ function reconAnalysis() {
         for mxnx in $(cat $TMP_PATH/mx.nxdomain.txt | awk '{print $1}'); do
             grep -i "$mxnx" $TMP_PATH/dnsx.mx.txt | sed 's/ / -> /g' | sed 's/^/[MX -> NXDOMAIN] /g'
         done
+
+        rm $TMP_PATH/dnsx.all.json
     }
     
     checkUnregisteredTakeover > results/takeover.unregistered.potential.txt
