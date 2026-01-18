@@ -188,18 +188,18 @@ printf "%s\n" "$welcomeMsg"
 function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
-    subdomainsFile="${2:=subdomains.all.txt}"
-    resultsFile="${3:=hosts.csv}"
+    resultsFile="${2:=hosts.csv}"
+    subdomainsFile="${3:=$SHARED_DIR/subdomains.all.txt}"
 
-    passiveSubdomainDiscovery $domainsFile $subdomainsFile
+    passiveSubdomainDiscovery $domainsFile $subdomainsFile 
     activeSubdomainDiscovery $domainsFile $subdomainsFile
-    subdomainCompilation $resultsFile
+    subdomainCompilation $resultsFile $subdomainsFile
 }
 
 function passiveSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
-    subdomainsFile="${2:=subdomains.all.txt}"
+    subdomainsFile="${2:=$SHARED_DIR/subdomains.all.txt}"
 
 
     bigNumberOfDomains=false
@@ -274,7 +274,7 @@ json = false
     mkdir -p $SHARED_DIR/pages/waymore
     waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR $SHARED_DIR/pages/waymore
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
-    grep -Eih "[^/:>\"\`( =@]*($domains)[^><)\`\" ;,\!]*" -Ro pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
+    grep -Eih "[^/:>\"\`( =@]*($domains)[^><)\`\" ;,\!]*" -Ro $SHARED_DIR/pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
     sort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > $SHARED_DIR/urls.passive.txt
     # extracting subdomains from urls
     cat $SHARED_DIR/urls.passive.txt | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > $SHARED_DIR/subdomains.passive/gau_waymore.txt
@@ -284,7 +284,8 @@ json = false
 function activeSubdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
     sed -i '/^$/d' $domainsFile
-    subdomainsFile="${2:=subdomains.all.txt}"
+    subdomainsFile="${2:=$SHARED_DIR/subdomains.all.txt}"
+
     
     function zoneTransfer() {
         domain="${1:?missing domain}"
@@ -345,7 +346,7 @@ function activeSubdomainDiscovery() {
 
 function subdomainCompilation() {
     resultsFile="${1:=hosts.csv}"
-    subdomainsFile="${2:=subdomains.all.txt}"
+    subdomainsFile="${2:=$SHARED_DIR/subdomains.all.txt}"
 
     cat $SHARED_DIR/dnsx.*.json > $TMP_PATH/dnsx.all.json
 
@@ -385,13 +386,14 @@ function subdomainCompilation() {
 }
 
 function reconAnalysis() {
-    subdomainsFile="${1:=subdomains.all.txt}"
-    hostsFile="${2:=hosts.csv}"
-    rangesFile="${3:=ranges.txt}"
+    hostsFile="${1:=hosts.csv}"
+    rangesFile="${2:=ranges.txt}"
+    subdomainsFile="${3:=$SHARED_DIR/subdomains.all.txt}"
     # output files
     webAllFile="${4:=$SHARED_DIR/web.all.txt}"
     webFilteredFile="${5:=$SHARED_DIR/web.filtered.txt}"
     ipsFile="${6:=$SHARED_DIR/ips.txt}"
+
 
     mkdir -p results
 
@@ -496,23 +498,23 @@ function spidering() {
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
     grep -Rih -Eo -- "http[^ ]+($domains)[^<\"' ]+" $SHARED_DIR/pages/gospider | sort -u > $SHARED_DIR/urls.gospider.txt
 
-    xnLinkFinder -i pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
+    xnLinkFinder -i $SHARED_DIR/pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
     grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > $SHARED_DIR/urls.xnlinkfinder.txt
     sort -u $SHARED_DIR/urls.katana.txt $SHARED_DIR/urls.gospider.txt $SHARED_DIR/urls.xnlinkfinder.txt $SHARED_DIR/urls.passive.txt | grep -vE '/[a-z0-9]{40}\.txt' > $urlsFile
     
     # CHECKING FOR BUCKETS
     # trufflehog s3 --bucket=bucket name
-    grep -Rioh -Pa "[^\"'>= ]{0,70}(amazonaws|aws-s3|storage\.googleapis\.com|storage\.cloud\.google\.com|appspot\.com|aliyuncs\.com|core\.windows\.net|documents\.azure\.com|digitaloceanspaces\.com|s3\.wasabisys\.com|objectstorage\.[a-z0-9-]+\.oraclecloud\.com|s3\.[a-z0-9-]+\.cloud-object-storage\.appdomain\.cloud|linodeobjects\.com|r2\.cloudflarestorage\.com)[^\"' ]{2,70}" pages | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/buckets.urls.txt
+    grep -Rioh -Pa "[^\"'>= ]{0,70}(amazonaws|aws-s3|storage\.googleapis\.com|storage\.cloud\.google\.com|appspot\.com|aliyuncs\.com|core\.windows\.net|documents\.azure\.com|digitaloceanspaces\.com|s3\.wasabisys\.com|objectstorage\.[a-z0-9-]+\.oraclecloud\.com|s3\.[a-z0-9-]+\.cloud-object-storage\.appdomain\.cloud|linodeobjects\.com|r2\.cloudflarestorage\.com)[^\"' ]{2,70}" $SHARED_DIR/pages | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/buckets.urls.txt
 
     # CHECKING FOR NEW SUBDOMAINS
     awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(sed 's/http[s]\?...//' $urlsFile | sed 's/\(\/.*\|:.*\|.*@\|\?.*\)//g' | sort -u) > results/subdomains.new.txt
     # TODO: maybe instead of just saving, repeat everything from subdomainCompilation
 
     ## gather more potential seeds for pentests
-    grep -REi 'http[s]?://[^/"\?]+' -aoh pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|youtu[.]be|vimeo[.]com|wikipedia|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u | dnsx | getDomain | sort -u > results/seeds.potential.txt
+    grep -REi 'http[s]?://[^/"\?]+' -aoh $SHARED_DIR/pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|youtu[.]be|vimeo[.]com|wikipedia|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u | dnsx | getDomain | sort -u > results/seeds.potential.txt
 
     # CHECKING JWT TOKENS
-    grep -Eh -Roa "eyJ[A-Za-z0-9=_+-]+\.[A-Za-z0-9=_+-]+\.?[A-Za-z0-9=_+-]*" pages | urlDecode | sort -u > results/jwts.txt
+    grep -Eh -Roa "eyJ[A-Za-z0-9=_+-]+\.[A-Za-z0-9=_+-]+\.?[A-Za-z0-9=_+-]*" $SHARED_DIR/pages | urlDecode | sort -u > results/jwts.txt
     if [ ! -f $TMP_PATH/secrets.txt ]; then (
         mkdir -p $TMP_PATH/passwords/ && cd $_ && 
         curl -L https://weakpass.com/download/48/10_million_password_list_top_10000.txt.gz --output - | gunzip -c > 10_million_password_list_top_10000.txt
@@ -534,9 +536,9 @@ function spidering() {
     #hashcat results/jwts.txt --show
 
     
-    gitleaks dir pages -f csv -r results/secrets.gitleaks.complete.csv
+    gitleaks dir $SHARED_DIR/pages -f csv -r results/secrets.gitleaks.complete.csv
     grep -vE '^(generic-api-key|aws-access-token|jwt)' results/secrets.gitleaks.complete.csv > results/secrets.gitleaks.csv
-    trufflehog filesystem ./pages --json > results/secrets.truffle.complete.json
+    trufflehog filesystem $SHARED_DIR/pages --json > results/secrets.truffle.complete.json
     cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.json
 }
 
@@ -723,7 +725,6 @@ function vulnScanning() {
     # consider Retire.js
 }
 
-
 function quickPortScanning() {
     ipsFile="${1:=$SHARED_DIR/ips.txt}"
     naabu -Pn -exclude-cdn -exclude-ports 80,443 -list $ipsFile -o results/naabu.quick.tcp.txt
@@ -732,18 +733,11 @@ function quickPortScanning() {
 
 function portScanning() {
     ipsFile="${1:=$SHARED_DIR/ips.txt}"
-    sudo -v
-    RUNNING=1
-    while [ $RUNNING -eq 1 ]; do
-        sudo -n true
-        sleep 60
-    done 2>/dev/null &
-
-    sudo nmap -sS -Pn -n -v3 --open -T4 -iL $ipsFile -oG nmap.top100.tcp.txt
-    sudo nmap -sUV -v3 --top-ports 23 --open -iL $ipsFile -oG nmap.udp.txt
-    sudo chown $USER:$USER nmap.*.txt
-
-    RUNNING=0
+    sudo su -c "
+        nmap -sS -Pn -n -v3 --open -T4 -iL $ipsFile -oG nmap.top100.tcp.txt
+        nmap -sUV -v3 --top-ports 23 --open -iL $ipsFile -oG nmap.udp.txt
+        chown $USER:$USER nmap.*.txt
+    "
 }
 
 # - # - # - # - # - # - # - # - # - # - # - # - #
