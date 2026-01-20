@@ -1,7 +1,6 @@
 #!/bin/zsh
 
 # TODO: add custom header option
-# TODO: consider size of dnsx.brute.json
 
 # TODO: look for more templates
 # TODO: look for similar projects (ex: NucleiFuzzer)
@@ -309,15 +308,15 @@ function activeSubdomainDiscovery() {
 
     # resolving subdomains
     mkdir -p $SHARED_DIR
-    rm -f $SHARED_DIR/dnsx.subdomains.json
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
-    dnsx -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile -o $SHARED_DIR/dnsx.passive.json >/dev/null
+    dnsx -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile | filterDnsJson > $SHARED_DIR/dnsx.passive.json
     
+    # small brute force using alterx wordlist
     if [ ! -f $SHARED_DIR/chaos.original.txt ]; then
         chaos -dL $domainsFile -o $SHARED_DIR/chaos.original.txt
     fi
     cat $SHARED_DIR/chaos.original.txt | alterx > $TMP_PATH/alterx.txt
-    dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $TMP_PATH/alterx.txt -o $SHARED_DIR/dnsx.alterx.json >/dev/null
+    dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $TMP_PATH/alterx.txt | filterDnsJson > $SHARED_DIR/dnsx.alterx.json
 
     # getting dns wordlist
     curl -o $TMP_PATH/services-names.txt -L 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/services-names.txt'
@@ -325,23 +324,20 @@ function activeSubdomainDiscovery() {
     curl -o $TMP_PATH/n0kovo_subdomains_small.txt -L 'https://raw.githubusercontent.com/n0kovo/n0kovo_subdomains/refs/heads/main/n0kovo_subdomains_small.txt'
     cat $TMP_PATH/services-names.txt $TMP_PATH/subdomains-top1million-110000.txt $TMP_PATH/n0kovo_subdomains_small.txt | sort -u > $TMP_PATH/subdomain.wordlist.txt
 
+    # preparing dns potential targets
+    awk '!seen[$0]++' $domainsFile $SHARED_DIR/subdomains.passive/*.tls.wildcard.txt | sed '/^$/d' > $TMP_PATH/brute.dns.potential.txt
 
-    # preparing dns targets
-    cat $domainsFile > $TMP_PATH/brute.dns.potential.txt
-    echo >> $TMP_PATH/brute.dns.potential.txt
-    cat $SHARED_DIR/subdomains.passive/*.tls.wildcard.txt >> $TMP_PATH/brute.dns.potential.txt
-
-    # removing crazy dns wildcards
-    awk '!seen[$0]++' $TMP_PATH/brute.dns.potential.txt | sed '/^$/d' > $TMP_PATH/brute.dns.potential.uniq.txt
-    sed -i 's/^/nonexist.iuygfcvbnjk./' $TMP_PATH/brute.dns.potential.uniq.txt
-    echo 'makingsurethefileisnotempty' > $TMP_PATH/brute.dns.removed.txt
-    dnsx -a -silent -no-color -l $TMP_PATH/brute.dns.potential.uniq.txt -o $TMP_PATH/brute.dns.removed.txt
-    awk -F, 'NR==FNR { keys[$1]; next } !($1 in keys)' $TMP_PATH/brute.dns.removed.txt  $TMP_PATH/brute.dns.potential.uniq.txt >  $TMP_PATH/brute.dns.targets.txt
+    # testing and removing crazy wildcard targets
+    sed -i 's/^/nonexist.iuygfcvbnjk./' $TMP_PATH/brute.dns.potential.txt
+    echo 'makingsurethefileisnotempty' > $TMP_PATH/brute.dns.crazy.txt
+    dnsx -a -silent -no-color -l $TMP_PATH/brute.dns.potential.txt -o $TMP_PATH/brute.dns.crazy.txt
+    awk -F, 'NR==FNR { keys[$1]; next } !($1 in keys)' $TMP_PATH/brute.dns.crazy.txt $TMP_PATH/brute.dns.potential.txt > $TMP_PATH/brute.dns.targets.txt
     sed -i 's/^nonexist.iuygfcvbnjk\.//' $TMP_PATH/brute.dns.targets.txt
 
     # bruting dns targets
+    rm -f $SHARED_DIR/dnsx.brute.json
     for domain in $(cat $TMP_PATH/brute.dns.targets.txt); do
-        dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d $domain -w $TMP_PATH/subdomain.wordlist.txt -o $SHARED_DIR/dnsx.brute.json >/dev/null        
+        dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d "$domain" -w $TMP_PATH/subdomain.wordlist.txt | filterDnsJson >> $SHARED_DIR/dnsx.brute.json
     done
 }
 
@@ -351,10 +347,15 @@ function subdomainCompilation() {
 
     cat $SHARED_DIR/dnsx.*.json > $TMP_PATH/dnsx.all.json
 
-    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null and .status_code == "NOERROR") | .host + " " + .a[0]' | awk '!seen[$1]++' > $TMP_PATH/hosts.a.txt
+    cat $TMP_PATH/dnsx.all.json | jq -r 'select (.a != null and .status_code == "NOERROR") | .host + " " + .a[0]' | awk '!seen[$1]++' > $TMP_PATH/hosts.a.unchecked.txt
+    # revalidating dns entries to avoid false positives, sleeping because of the recent previous dns brute
+    sleep 60 && awk '{print $1}' $TMP_PATH/hosts.a.unchecked.txt | dnsx -retry 5 -silent -no-color > $TMP_PATH/hosts.a.valid.txt
+    awk 'NR==FNR { keys[$1]; next } ($1 in keys)' $TMP_PATH/hosts.a.valid.txt $TMP_PATH/hosts.a.unchecked.txt > $TMP_PATH/hosts.a.txt
+
     cat $TMP_PATH/dnsx.all.json | jq -r 'select (.ns != null) | .host + " " + .ns[0]' > $TMP_PATH/hosts.ns.txt
     cat $TMP_PATH/dnsx.all.json | jq -r 'select (.asn != null) | .host + " " + .asn["as-number"] + "_" + (.asn["as-name"] | gsub(" "; "_"))' > $TMP_PATH/hosts.asn.txt
     rm $TMP_PATH/dnsx.all.json
+
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
     cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | cdncheck -resp -silent -no-color | awk '{print $1, substr($2,2,length($2)-2)"_"substr($3,2,length($3)-2) }' > $TMP_PATH/hosts.cdn.txt
     cat $TMP_PATH/hosts.a.txt | awk '{print $2}' | sort -u | dnsx -resp -silent -no-color -ptr -json | jq -r '(.host) + " " + (.ptr[0] // "null")' > $TMP_PATH/hosts.ptr.txt
@@ -377,14 +378,11 @@ function subdomainCompilation() {
     sort -u $subdomainsFile $TMP_PATH/subdomains.resolved.txt > $TMP_PATH/subdomains.updated.txt
     mv $TMP_PATH/subdomains.updated.txt $subdomainsFile
 
-
     echo -e "[*] You may want to filter $resultsFile"
-
     AS0=$(grep -i 'AS0_not_routed' $resultsFile)
     if [ ! -z "$AS0" ]; then
         echo -e "Ex:\n$AS0"
     fi
-    # xdg-open $resultsFile
 }
 
 function reconAnalysis() {
@@ -820,6 +818,13 @@ function getDomain() {
             getDomainCore "$param"
         done
     fi
+}
+
+function filterDnsJson() {
+    while read -r param; do
+        [ -z "$param" ] && continue
+        printf "%s\n" "$param" | jq 'select (.status_code == "NOERROR" or .cname or .ns or .mx ) | {host,a,ns,mx,asn,cname,aaaa,status_code}' -cM
+    done
 }
 
 function filterWebUrls() {
