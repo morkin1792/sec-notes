@@ -593,30 +593,37 @@ function customVulnScanning() {
         echo "[*] Generating endpoints file..."
         cat $urlsFile \
         | grep -Eiv '[^=]+[.]js$|[.]js\?' \
+        | sed 's/%[A-Za-z0-9]\{2\}$//' \
         | uro | sort -u > $TMP_PATH/endpoints.potential.txt
         awk -F/ '{print $3}' $TMP_PATH/endpoints.potential.txt | sort -u | httpx -mc 200,201,202,203,204,205,206,207,208,301,302,307,308,400,401,403,404,405,406,410,411,412,415,423 -silent | awk -F/ '{print $3}' | sort -u > $TMP_PATH/domains.alive.txt
         awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
         echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
 
-        echo "[*] Trying to find more parameters..."
-        # getting urls to brute parameters, max 500 per host
-        grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | shuf | awk '
+        # arjun - preparing targets
+        grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 | sort -u > $TMP_PATH/urls.with.parameters.txt
+        grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4|webm)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | sort -u > $TMP_PATH/urls.without.parameters.txt
+        # getting endpoints that dont have one single parameter discovered yet
+        awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.without.parameters.txt > $TMP_PATH/urls.potential.find.parameters.txt
+
+        # using just priority endpoints to speed up the process
+        grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|list|upload|export|import|sale|price|thank|message|download|file)' $TMP_PATH/urls.potential.find.parameters.txt > $TMP_PATH/urls.priority.find.parameters.txt
+
+        # limiting max 50 urls per host
+        shuf $TMP_PATH/urls.priority.find.parameters.txt | awk '
         {
             url = $0
             n = split(url, paths, "/")
             host = paths[3]
             counter[host]++
 
-            if (counter[host] <= 500) {
+            if (counter[host] <= 50) {
                 print url
             }
 
-        }' | uro | sort -u > $TMP_PATH/urls.potential.parameters.txt
-        grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 | sort -u > $TMP_PATH/urls.with.parameters.txt
-        awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.potential.parameters.txt > $TMP_PATH/urls.find.parameters.txt
-        # using just priority endpoints to speed up the process
-        grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|list|upload|export|import)' $TMP_PATH/urls.find.parameters.txt | shuf -n 100 > $TMP_PATH/urls.find.parameters.priority.txt
-        arjun -i $TMP_PATH/urls.find.parameters.priority.txt --headers "User-Agent: $USER_AGENT" -oT $SHARED_DIR/arjun.txt
+        }' | shuf -n 100 > $TMP_PATH/urls.final.find.parameters.txt
+ 
+        echo "[*] Trying to find more parameters in $(wc -l < $TMP_PATH/urls.final.find.parameters.txt) endpoints..."
+        arjun -i $TMP_PATH/urls.final.find.parameters.txt --headers "User-Agent: $USER_AGENT" -oT $SHARED_DIR/arjun.txt
         if [ -s $SHARED_DIR/arjun.txt ]; then
             cat $SHARED_DIR/arjun.txt >> $TMP_PATH/endpoints.txt
         fi
