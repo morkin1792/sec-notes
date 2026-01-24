@@ -309,14 +309,14 @@ function activeSubdomainDiscovery() {
     # resolving subdomains
     mkdir -p $SHARED_DIR
     export PDCP_API_KEY=$(yq -y '.apikeys.chaos' $CONFIG_FILE | sed 's/^- //' | head -1)
-    dnsx -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile | filterDnsJson > $SHARED_DIR/dnsx.passive.json
+    dnsx -retry 3 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $subdomainsFile | filterDnsJson >> $SHARED_DIR/dnsx.passive.json
     
     # small brute force using alterx wordlist
     if [ ! -f $SHARED_DIR/chaos.original.txt ]; then
         chaos -dL $domainsFile -o $SHARED_DIR/chaos.original.txt
     fi
     cat $SHARED_DIR/chaos.original.txt | alterx > $TMP_PATH/alterx.txt
-    dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $TMP_PATH/alterx.txt | filterDnsJson > $SHARED_DIR/dnsx.alterx.json
+    dnsx -r $TMP_PATH/resolvers.txt -threads 300 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -l $TMP_PATH/alterx.txt | filterDnsJson >> $SHARED_DIR/dnsx.alterx.json
 
     # getting dns wordlist
     curl -o $TMP_PATH/services-names.txt -L 'https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/DNS/services-names.txt'
@@ -337,7 +337,7 @@ function activeSubdomainDiscovery() {
     # bruting dns targets
     rm -f $SHARED_DIR/dnsx.brute.json
     for domain in $(cat $TMP_PATH/brute.dns.targets.txt); do
-        dnsx -r $TMP_PATH/resolvers.txt -retry 5 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d "$domain" -w $TMP_PATH/subdomain.wordlist.txt | filterDnsJson >> $SHARED_DIR/dnsx.brute.json
+        dnsx -r $TMP_PATH/resolvers.txt -threads 300 -silent -a -aaaa -cname -ns -mx -asn -rcode noerror,nxdomain,refused -json -d "$domain" -w $TMP_PATH/subdomain.wordlist.txt | filterDnsJson >> $SHARED_DIR/dnsx.brute.json
     done
 }
 
