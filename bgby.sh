@@ -51,7 +51,7 @@ function checkRequirements() {
         'uro'               # pipx install uro
         'arjun'             # pipx install arjun
         'flatsqli'          # go install github.com/morkin1792/flatsqli@latest
-        'dalfox'            # go install github.com/hahwul/dalfox/v2@latest
+        # 'dalfox'            # go install github.com/hahwul/dalfox/v2@latest
         'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
         'nmap'              # pacman -S nmap || apt install nmap
     )
@@ -449,8 +449,10 @@ function reconAnalysis() {
     }
     
     checkUnregisteredTakeover > results/takeover.unregistered.potential.txt
+    deleteIfSmall results/takeover.unregistered.potential.txt
 
     subzy run --targets $subdomainsFile --hide_fails --vuln --output results/takeover.subzy.txt
+    deleteIfSmall results/takeover.subzy.txt
     
     # BUCKET
     cat $subdomainsFile > $TMP_PATH/hosts.txt
@@ -458,7 +460,9 @@ function reconAnalysis() {
     cat $subdomainsFile | tr '.' '-' >> $TMP_PATH/hosts.txt
     cat $subdomainsFile | tr -d '.' >> $TMP_PATH/hosts.txt
     gobuster s3 -k -a "$USER_AGENT" --wordlist $TMP_PATH/hosts.txt --no-color -o results/buckets.aws.txt
+    deleteIfSmall results/buckets.aws.txt
     gobuster gcs -k -a "$USER_AGENT" --wordlist $TMP_PATH/hosts.txt --no-color -o results/buckets.gcp.txt
+    deleteIfSmall results/buckets.gcp.txt
     
     # GETTING WEB HOSTS
     awk -F, '{print $2}' $hostsFile | tail +2 > $TMP_PATH/web.potential.txt
@@ -509,11 +513,11 @@ function spidering() {
     grep -Rioh -Pa "[^\"'>= ]{0,70}(amazonaws|aws-s3|storage\.googleapis\.com|storage\.cloud\.google\.com|appspot\.com|aliyuncs\.com|core\.windows\.net|documents\.azure\.com|digitaloceanspaces\.com|s3\.wasabisys\.com|objectstorage\.[a-z0-9-]+\.oraclecloud\.com|s3\.[a-z0-9-]+\.cloud-object-storage\.appdomain\.cloud|linodeobjects\.com|r2\.cloudflarestorage\.com)[^\"' ]{2,70}" $SHARED_DIR/pages | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/buckets.urls.txt
 
     # CHECKING FOR NEW SUBDOMAINS
-    awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(sed 's/http[s]\?...//' $urlsFile | sed 's/\(\/.*\|:.*\|.*@\|\?.*\)//g' | sort -u) > results/subdomains.new.txt
+    awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(cat $urlsFile | urlDecode | urlDecode | tr '[:upper:]' '[:lower:]' | sed -E 's|^(https?://)+||; s|^([A-Za-z0-9.-]+).*|\1|; s|[.]$||' | grep '[.]' | sort -u) > results/subdomains.new.txt
     # TODO: maybe instead of just saving, repeat everything from subdomainCompilation
 
-    ## gather more potential seeds for pentests
-    grep -REi 'http[s]?://[^/"\?]+' -aoh $SHARED_DIR/pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|youtu[.]be|vimeo[.]com|wikipedia|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u | dnsx | getDomain | sort -u > results/seeds.potential.txt
+    ## gather more potential seeds for pentesting
+    grep -REi 'http[s]?://[^/"\?]+' -aoh $SHARED_DIR/pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|youtu[.]be|vimeo[.]com|wikipedia|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u | dnsx | getDomain | sort -u > pentest.potential.seeds.txt
 
     # CHECKING JWT TOKENS
     grep -Eh -Roa "eyJ[A-Za-z0-9=_+-]+\.[A-Za-z0-9=_+-]+\.?[A-Za-z0-9=_+-]*" $SHARED_DIR/pages | urlDecode | sort -u > results/jwts.txt
@@ -539,9 +543,10 @@ function spidering() {
 
     
     gitleaks dir $SHARED_DIR/pages -f csv -r results/secrets.gitleaks.complete.csv
-    grep -vE '^(generic-api-key|aws-access-token|jwt)' results/secrets.gitleaks.complete.csv > results/secrets.gitleaks.csv
+    grep -vE '^(generic-api-key|aws-access-token|jwt|gcp-api-key)' results/secrets.gitleaks.complete.csv > results/secrets.gitleaks.filtered.csv
     trufflehog filesystem $SHARED_DIR/pages --json > results/secrets.truffle.complete.json
-    cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.json
+    cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.filtered.json
+    # grep -Ei -oh 'AIza[A-Za-z0-9_-]{35}' results/secrets.truffle.complete.json results/secrets.gitleaks.complete.csv | sort -u | aiza-scanner
 }
 
 function contentDiscovery() {
@@ -565,7 +570,10 @@ function contentDiscovery() {
     cat $TMP_PATH/fuzz.*.txt | sort -u > $TMP_PATH/fuzz.all.txt
     echo "[*] Total fuzzing words: $(wc -l < $TMP_PATH/fuzz.all.txt)"
     
-    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -B --json -w $TMP_PATH/fuzz.all.txt -o results/feroxbuster.$(date +"%s").results.json # ? -g
+    feroxResults=results/feroxbuster.$(date +"%s").complete.json
+    cat $webFilteredFile | feroxbuster --stdin -r -k -a "$USER_AGENT" -n -B --json -w $TMP_PATH/fuzz.all.txt -o $feroxResults # ? -g
+    cat $feroxResults | jq 'select (.status >= 200 and .status < 400) | select (.path | test("\\.(js|css|png|jpg|jpeg|ico|gif|svg|woff|woff2|ttf)$") | not)' | jq -s 'group_by([.word_count, .content_length, (.original_url | (split("/") | .[:3] | join("/"))) ]) | map(select(length<=5)) | flatten | sort_by(.content_length) | sort_by(.original_url) | .[] | {"url","path","status","content_length","word_count"}' -C > $(echo $feroxResults | sed 's/complete/filtered/')
+
 }
 
 function customVulnScanning() {
@@ -581,75 +589,70 @@ function customVulnScanning() {
     # - ?ci: commix
     # - https://github.com/topics/VULN
 
-    echo "[*] Cleaning endpoints..."    
-    cat $urlsFile \
-    | grep -Eiv '[^=]+[.]js$|[.]js\?' \
-    | uro | sort -u > $TMP_PATH/endpoints.potential.txt
-    awk -F/ '{print $3}' $TMP_PATH/endpoints.potential.txt | sort -u | httpx -mc 200,201,202,203,204,205,206,207,208,301,302,307,308,400,401,403,404,405,406,410,411,412,415,423 -silent | awk -F/ '{print $3}' | sort -u > $TMP_PATH/domains.alive.txt
-    awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
-    echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
+    if [ ! -s $SHARED_DIR/endpoints.txt ]; then
+        echo "[*] Generating endpoints file..."
+        cat $urlsFile \
+        | grep -Eiv '[^=]+[.]js$|[.]js\?' \
+        | uro | sort -u > $TMP_PATH/endpoints.potential.txt
+        awk -F/ '{print $3}' $TMP_PATH/endpoints.potential.txt | sort -u | httpx -mc 200,201,202,203,204,205,206,207,208,301,302,307,308,400,401,403,404,405,406,410,411,412,415,423 -silent | awk -F/ '{print $3}' | sort -u > $TMP_PATH/domains.alive.txt
+        awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
+        echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
 
-    # TODO: test the part below
-    echo "[*] Trying to find more parameters..."
-    # getting urls to brute parameters, max 500 per host
-    grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | shuf | awk '
-    {
-        url = $0
-        n = split(url, paths, "/")
-        host = paths[3]
-        counter[host]++
+        echo "[*] Trying to find more parameters..."
+        # getting urls to brute parameters, max 500 per host
+        grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | shuf | awk '
+        {
+            url = $0
+            n = split(url, paths, "/")
+            host = paths[3]
+            counter[host]++
 
-        if (counter[host] <= 500) {
-            print url
-        }
+            if (counter[host] <= 500) {
+                print url
+            }
 
-    }' | uro | sort -u > $TMP_PATH/urls.potential.parameters.txt
-    grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 > $TMP_PATH/urls.with.parameters.txt
-    awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.potential.parameters.txt > $TMP_PATH/urls.find.parameters.txt
-    echo "[*] Total urls to find parameters: $(wc -l < $TMP_PATH/urls.find.parameters.txt)"
-    # if too slow, just use priority endpoints
-    # grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|upload|export)' $TMP_PATH/endpoints.txt > $TMP_PATH/priority.endpoints.txt
-    arjun -i $TMP_PATH/urls.find.parameters.txt --headers "User-Agent: $USER_AGENT"  -oT $TMP_PATH/arjun.txt
-    echo "[*] Found $(wc -l < $TMP_PATH/arjun.txt) new parameters..."
-    if [ -s $TMP_PATH/arjun.txt ]; then
-        cat $TMP_PATH/arjun.txt >> $TMP_PATH/endpoints.txt
+        }' | uro | sort -u > $TMP_PATH/urls.potential.parameters.txt
+        grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 | sort -u > $TMP_PATH/urls.with.parameters.txt
+        awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.potential.parameters.txt > $TMP_PATH/urls.find.parameters.txt
+        # using just priority endpoints to speed up the process
+        grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|list|upload|export|import)' $TMP_PATH/urls.find.parameters.txt | shuf -n 100 > $TMP_PATH/urls.find.parameters.priority.txt
+        arjun -i $TMP_PATH/urls.find.parameters.priority.txt --headers "User-Agent: $USER_AGENT" -oT $SHARED_DIR/arjun.txt
+        if [ -s $SHARED_DIR/arjun.txt ]; then
+            cat $SHARED_DIR/arjun.txt >> $TMP_PATH/endpoints.txt
+        fi
+        cp $TMP_PATH/endpoints.txt $SHARED_DIR/endpoints.txt
+    else
+        echo "[*] Using existing endpoints file!"
     fi
 
     mkdir -p results/dast
 
     # SQLi
-    grep '\?' $TMP_PATH/endpoints.txt > $TMP_PATH/endpoints.with.parameters.txt
+    grep '\?' $SHARED_DIR/endpoints.txt > $TMP_PATH/endpoints.with.parameters.txt
     flatsqli detect -uf $TMP_PATH/endpoints.with.parameters.txt -H "User-Agent: $USER_AGENT" -o results/dast/flatsqli.md
 
-    cat $TMP_PATH/endpoints.txt \
+    cat $SHARED_DIR/endpoints.txt \
     | gf sqli \
     | nuclei -dast -tags sqli -H "User-Agent: $USER_AGENT" -silent -o results/dast/sqli_potential.txt
     
     # Reflected XSS
-    grep '\?' $TMP_PATH/endpoints.txt \
+    grep '\?' $SHARED_DIR/endpoints.txt \
     | nuclei -dast -tags xss -H "User-Agent: $USER_AGENT" -silent -o results/dast/xss.nuclei.txt
 
     # printf "%s %s\n" "XSS dalfox B" "$(date)" >> /tmp/log
-    # cat $TMP_PATH/endpoints.txt \
+    # cat $SHARED_DIR/endpoints.txt \
     # | gf xss \
     # | dalfox pipe --user-agent "$USER_AGENT" --skip-mining-all --detailed-analysis --deep-domxss --context-aware --waf-evasion --timeout 11 --delay 300 --follow-redirects --max-cpu 2 --silence -o results/dast/xss.dalfox.B.txt
 
     # printf "%s %s\n" "XSS dalfox A" "$(date)" >> /tmp/log
-    # grep '\?' $TMP_PATH/endpoints.txt \
+    # grep '\?' $SHARED_DIR/endpoints.txt \
     # | dalfox pipe --user-agent "$USER_AGENT" --skip-xss-scanning --timeout 8 --delay 100 --follow-redirects --max-cpu 3 -o results/dast/xss.dalfox.A.txt
 
-    # printf "%s %s\n" "XSStrike + params" "$(date)" >> /tmp/log
-    # while read -r url; do
-    #     echo "[*] Scanning $url"
-    #     # TODO: pipx install xsstrike
-    #     xsstrike --url "$url" --headers "User-Agent: $USER_AGENT" --log-file "results/dast/xss.xsstrike.log.$(url2path $url).txt" > results/dast/xss.xsstrike.out.$(url2path $url).txt
-    # done < <(grep '\?' $TMP_PATH/endpoints.txt)
-
     # LFI/RFI
-    cat $TMP_PATH/endpoints.txt | gf lfi | nuclei -dast -tags lfi,rfi -H "User-Agent: $USER_AGENT" -silent -o results/dast/lfi.txt
+    cat $SHARED_DIR/endpoints.txt | gf lfi | nuclei -dast -tags lfi,rfi -H "User-Agent: $USER_AGENT" -silent -o results/dast/lfi.txt
     
     # SSRF
-    cat $TMP_PATH/endpoints.txt | gf ssrf | nuclei -dast -tags ssrf -H "User-Agent: $USER_AGENT" -silent -o results/dast/ssrf.txt
+    cat $SHARED_DIR/endpoints.txt | gf ssrf | nuclei -dast -tags ssrf -H "User-Agent: $USER_AGENT" -silent -o results/dast/ssrf.txt
 
     # XXE
     local xxe_json='
@@ -659,27 +662,27 @@ function customVulnScanning() {
 }
 '
     printf "%s\n" "$xxe_json" > ~/.gf/bgby_xxe.json
-    cat $TMP_PATH/endpoints.txt | gf bgby_xxe | nuclei -dast -tags xxe -H "User-Agent: $USER_AGENT" -silent -o results/dast/xxe.txt
+    cat $SHARED_DIR/endpoints.txt | gf bgby_xxe | nuclei -dast -tags xxe -H "User-Agent: $USER_AGENT" -silent -o results/dast/xxe.txt
 
     # RCE
-    cat $TMP_PATH/endpoints.txt | gf rce | nuclei -dast -tags cmdi,rce -H "User-Agent: $USER_AGENT" -silent -o results/dast/rce.txt
+    cat $SHARED_DIR/endpoints.txt | gf rce | nuclei -dast -tags cmdi,rce -H "User-Agent: $USER_AGENT" -silent -o results/dast/rce.txt
 
     # SSTI
-    cat $TMP_PATH/endpoints.txt | gf ssti | nuclei -dast -tags ssti -H "User-Agent: $USER_AGENT" -silent -o results/dast/ssti.txt
+    cat $SHARED_DIR/endpoints.txt | gf ssti | nuclei -dast -tags ssti -H "User-Agent: $USER_AGENT" -silent -o results/dast/ssti.txt
 
     # # IDOR
-    # cat $TMP_PATH/endpoints.txt | gf idor | nuclei -dast -tags idor -H "User-Agent: $USER_AGENT" -silent -o results/dast/idor.txt
+    # cat $SHARED_DIR/endpoints.txt | gf idor | nuclei -dast -tags idor -H "User-Agent: $USER_AGENT" -silent -o results/dast/idor.txt
 
     # REDIRECT
-    cat $TMP_PATH/endpoints.txt | gf redirect | nuclei -dast -tags redirect -H "User-Agent: $USER_AGENT" -silent -o results/dast/redirect.txt
+    cat $SHARED_DIR/endpoints.txt | gf redirect | nuclei -dast -tags redirect -H "User-Agent: $USER_AGENT" -silent -o results/dast/redirect.txt
 
     # RANDOM SAMPLE
-    grep '\?' $TMP_PATH/endpoints.txt \
+    grep '\?' $SHARED_DIR/endpoints.txt \
     | shuf -n 1000 \
     | nuclei -dast -H "User-Agent: $USER_AGENT" -silent -o results/dast/random_sample_scan.txt
 
     # ALL
-    grep '\?' $TMP_PATH/endpoints.txt \
+    grep '\?' $SHARED_DIR/endpoints.txt \
     | nuclei -dast -H "User-Agent: $USER_AGENT" -silent -o results/dast/all_nuclei_scan.txt
 
     echo "[+] DAST Pipeline Finished."
@@ -856,6 +859,19 @@ EOF
 
 function fixedSort() {
     python3 -c "import sys; print('\n'.join(sorted(sys.stdin.read().splitlines(), reverse=True)))" | uniq
+}
+
+function deleteIfSmall() {
+    local file="$1"
+    local minSize="${2:=10}"
+    if [ ! -s "$file" ]; then 
+        rm -f "$file"
+    else
+        local fileSize=$(stat -c%s "$file")
+        if [ "$fileSize" -lt "$minSize" ]; then
+            rm -f "$file"
+        fi
+    fi    
 }
 
 function prips() {
