@@ -27,7 +27,11 @@
 #### gathering users, emails, cpfs
 - search engine "@company"
 - theHarvester
-- hunter.io, www.skymem.info, phonebook.cz
+- websites
+    - https://websets.exa.ai/websets/
+    - hunter.io
+    - www.skymem.info
+    - phonebook.cz
 - look for passwords / hashes in leaked databases 
 - [jbr_query.sh](jbr_query.sh)
 
