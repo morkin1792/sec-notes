@@ -173,17 +173,68 @@ checkConfigFile
 
 echo Using $TMP_PATH as temporary space
 
+
 local welcomeMsg="
-logAndCall subdomainDiscovery
-logAndCall reconAnalysis
-logAndCall spidering
-logAndCall contentDiscovery
-logAndCall customVulnScanning
-logAndCall vulnScanning
-logAndCall quickPortScanning
-logAndCall portScanning # requires sudo
+FUNCTIONS:
+
+[fullMode]: Use this if you have a set of domains and wants to gather everything. Performs subdomain discovery, recon analysis, spidering, content discovery, vulnerability scanning and port scanning. It may take a while!
+    Usage:
+        1) Put all your domains in scope.txt (one per line)
+        2) Run: fullMode scope.txt
+        3) Check all files in the current directory and, MAINLY, results folder. 
+
+[reconMode]: Use this if you just need to get a list of subdomains for a given set of domains.
+    Usage:
+        1) Put all your domains in scope.txt (one per line)
+        2) Run: reconMode scope.txt
+        3) Check the output in hosts.csv
+
+[webMode]: Use this if you just want to focus on a list of websites. Similar to fullMode, but excluding subdomain discovery and port scanning.
+    Usage:
+        1) Put all your websites in web.scope.txt (one per line)
+        2) Run: webMode web.scope.txt
+        3) Check all files in the current directory and, MAINLY, results folder. 
 "
 printf "%s\n" "$welcomeMsg"
+
+function fullMode() {
+    domainsFile="${1:=scope.txt}"
+
+    printf "%s\n" "[*] Starting full assessment..."
+    logAndCall subdomainDiscovery $domainsFile
+    logAndCall reconAnalysis
+    logAndCall spidering $domainsFile
+    logAndCall contentDiscovery $domainsFile
+    logAndCall customVulnScanning
+    logAndCall vulnScanning
+    logAndCall quickPortScanning
+    # logAndCall portScanning # requires sudo
+
+}
+
+function webMode() {
+    websitesScopeFile="${1:=web.scope.txt}"
+    domainsFile="scope.txt"
+
+    printf "%s\n" "[*] Starting web-only assessment..."
+
+    mkdir -p $SHARED_DIR
+    dnsx -retry 3 -silent -a -aaaa -cname -asn -rcode noerror,nxdomain,refused -json -l $websitesScopeFile | filterDnsJson >> $SHARED_DIR/dnsx.webassessment.json
+    subdomainCompilation
+    cat hosts.csv | awk -F, '{print $1}' | tail +2 | sort -u > $domainsFile
+    cat hosts.csv | awk -F, '{print $2}' | tail +2 | sort -u | httpx > $SHARED_DIR/web.filtered.txt
+    cp $SHARED_DIR/web.filtered.txt $SHARED_DIR/web.all.txt
+
+    logAndCall spidering $domainsFile
+    logAndCall contentDiscovery $domainsFile 
+    logAndCall customVulnScanning
+    logAndCall vulnScanning
+
+}
+
+function reconMode() {
+    logAndCall subdomainDiscovery "$@"
+}
 
 function subdomainDiscovery() {
     domainsFile="${1:=scope.txt}"
@@ -374,9 +425,11 @@ function subdomainCompilation() {
     sed -i "1i domain,subdomain,ip,asn,cdn,ptr,ns" $resultsFile
     
     ## updating $subdomainsFile to make sure it has new subdomains from active discovery phase
-    cat $TMP_PATH/hosts.a.txt | awk '{print $1}' | sort -u > $TMP_PATH/subdomains.resolved.txt
-    sort -u $subdomainsFile $TMP_PATH/subdomains.resolved.txt > $TMP_PATH/subdomains.updated.txt
-    mv $TMP_PATH/subdomains.updated.txt $subdomainsFile
+    if [ -f $subdomainsFile ]; then
+        cat $TMP_PATH/hosts.a.txt | awk '{print $1}' | sort -u > $TMP_PATH/subdomains.resolved.txt
+        sort -u $subdomainsFile $TMP_PATH/subdomains.resolved.txt > $TMP_PATH/subdomains.updated.txt
+        mv $TMP_PATH/subdomains.updated.txt $subdomainsFile
+    fi
 
     echo -e "[*] You may want to filter $resultsFile"
     AS0=$(grep -i 'AS0_not_routed' $resultsFile)
@@ -513,9 +566,10 @@ function spidering() {
     grep -Rioh -Pa "[^\"'>= ]{0,70}(amazonaws|aws-s3|storage\.googleapis\.com|storage\.cloud\.google\.com|appspot\.com|aliyuncs\.com|core\.windows\.net|documents\.azure\.com|digitaloceanspaces\.com|s3\.wasabisys\.com|objectstorage\.[a-z0-9-]+\.oraclecloud\.com|s3\.[a-z0-9-]+\.cloud-object-storage\.appdomain\.cloud|linodeobjects\.com|r2\.cloudflarestorage\.com)[^\"' ]{2,70}" $SHARED_DIR/pages | sed 's/^\.//' | sed 's/http[s]\?...//' | sed 's/^\/\///' | sed 's/\/$//' | sed 's/\=1[0-9]\{9,14\}//' | sort -u > results/buckets.urls.txt
 
     # CHECKING FOR NEW SUBDOMAINS
-    awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(cat $urlsFile | urlDecode | urlDecode | tr '[:upper:]' '[:lower:]' | sed -E 's|^(https?://)+||; s|^([A-Za-z0-9.-]+).*|\1|; s|[.]$||' | grep '[.]' | sort -u) > results/subdomains.new.txt
-    # TODO: maybe instead of just saving, repeat everything from subdomainCompilation
-
+    if [ -s $subdomainsFile ]; then
+        awk 'NR==FNR { keys[$1]; next } !($1 in keys)' $subdomainsFile <(cat $urlsFile | urlDecode | urlDecode | tr '[:upper:]' '[:lower:]' | sed -E 's|^(https?://)+||; s|^([A-Za-z0-9.-]+).*|\1|; s|[.]$||' | grep '[.]' | sort -u) > results/subdomains.new.txt
+        # TODO: maybe instead of just saving, repeat everything from subdomainCompilation
+    fi
     ## gather more potential seeds for pentesting
     grep -REi 'http[s]?://[^/"\?]+' -aoh $SHARED_DIR/pages | sed 's/^http[s]\?:\/\///' | grep -vE 'facebook|google|youtube|youtu[.]be|vimeo[.]com|wikipedia|instagram|twitter|apple|pinterest|tiktok|reactjs\.org|nextjs\.org|twimg\.com|tumblr\.com|pxf\.io|scene7\.com|imgix\.net|medium\.com|wordpress\.com|shopify\.com|sentry\.io|giphy\.com|cloudfront\.net|hulu\.com' | sed '/^.\{64,\}$/d' | sort -u | dnsx | getDomain | sort -u > pentest.potential.seeds.txt
 
