@@ -214,13 +214,13 @@ function fullMode() {
 
 function webMode() {
     websitesScopeFile="${1:=web.scope.txt}"
-    domainsFile="scope.txt"
 
     printf "%s\n" "[*] Starting web-only assessment..."
 
     mkdir -p $SHARED_DIR
     dnsx -retry 3 -silent -a -aaaa -cname -asn -rcode noerror,nxdomain,refused -json -l $websitesScopeFile | filterDnsJson >> $SHARED_DIR/dnsx.webassessment.json
     subdomainCompilation
+    domainsFile="scope.txt"
     cat hosts.csv | awk -F, '{print $1}' | tail +2 | sort -u > $domainsFile
     cat hosts.csv | awk -F, '{print $2}' | tail +2 | sort -u | httpx > $SHARED_DIR/web.filtered.txt
     cp $SHARED_DIR/web.filtered.txt $SHARED_DIR/web.all.txt
@@ -326,7 +326,7 @@ json = false
     waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR $SHARED_DIR/pages/waymore
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
     grep -Eih "[^/:>\"\`( =@]*($domains)[^><)\`\" ;,\!]*" -Ro $SHARED_DIR/pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
-    sort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > $SHARED_DIR/urls.passive.txt
+    betterSort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > $SHARED_DIR/urls.passive.txt
     # extracting subdomains from urls
     cat $SHARED_DIR/urls.passive.txt | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > $SHARED_DIR/subdomains.passive/gau_waymore.txt
     cat $SHARED_DIR/subdomains.passive/* | sed 's/^[.-]//g' | sed 's/[.]$//g' | tr '[:upper:]' '[:lower:]' | sort -u > $subdomainsFile
@@ -351,7 +351,7 @@ function activeSubdomainDiscovery() {
     if [ -s $TMP_PATH/zonetransfer.txt ]; then
         cp $subdomainsFile $TMP_PATH/subdomains.before.zonetransfer.txt
         echo "[*] Zone transfer successful for some domains, adding the following subdomains to the list:"
-        sort -u $TMP_PATH/subdomains.before.zonetransfer.txt $TMP_PATH/zonetransfer.txt > $subdomainsFile
+        betterSort -u $TMP_PATH/subdomains.before.zonetransfer.txt $TMP_PATH/zonetransfer.txt > $subdomainsFile
     fi
 
     # getting dns resolvers
@@ -427,7 +427,7 @@ function subdomainCompilation() {
     ## updating $subdomainsFile to make sure it has new subdomains from active discovery phase
     if [ -f $subdomainsFile ]; then
         cat $TMP_PATH/hosts.a.txt | awk '{print $1}' | sort -u > $TMP_PATH/subdomains.resolved.txt
-        sort -u $subdomainsFile $TMP_PATH/subdomains.resolved.txt > $TMP_PATH/subdomains.updated.txt
+        betterSort -u $subdomainsFile $TMP_PATH/subdomains.resolved.txt > $TMP_PATH/subdomains.updated.txt
         mv $TMP_PATH/subdomains.updated.txt $subdomainsFile
     fi
 
@@ -477,7 +477,7 @@ function reconAnalysis() {
         while read -r nserver; do
             getDomain $nserver >> $TMP_PATH/ns.only.txt
         done < <(cat $TMP_PATH/dnsx.ns.txt | awk '{print $2}' | sort -u | sed '/^$/d')
-        sort -u $TMP_PATH/ns.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/ns.nxdomain.txt
+        betterSort -u $TMP_PATH/ns.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/ns.nxdomain.txt
         for nsnx in $(cat $TMP_PATH/ns.nxdomain.txt | awk '{print $1}'); do
             grep -i "$nsnx" $TMP_PATH/dnsx.ns.txt | sed 's/ / -> /g' | sed 's/^/[NS -> NXDOMAIN] /g'
         done
@@ -493,7 +493,7 @@ function reconAnalysis() {
         while read -r mx; do
             getDomain $mx >> $TMP_PATH/mx.only.txt
         done < <(cat $TMP_PATH/dnsx.mx.txt | awk '{print $2}' | sort -u | sed '/^$/d')
-        sort -u $TMP_PATH/mx.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/mx.nxdomain.txt
+        betterSort -u $TMP_PATH/mx.only.txt | dnsx -silent -rcode nxdomain > $TMP_PATH/mx.nxdomain.txt
         for mxnx in $(cat $TMP_PATH/mx.nxdomain.txt | awk '{print $1}'); do
             grep -i "$mxnx" $TMP_PATH/dnsx.mx.txt | sed 's/ / -> /g' | sed 's/^/[MX -> NXDOMAIN] /g'
         done
@@ -553,13 +553,14 @@ function spidering() {
     mkdir -p $SHARED_DIR/pages/katana
     katana -list $webFilteredFile -H "User-Agent: $USER_AGENT" -d 4 -jsl -jc -kf all -aff -fx -xhr -sr -srd $SHARED_DIR/pages/katana -o $SHARED_DIR/urls.katana.txt >/dev/null
     
-    gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap -R -o $SHARED_DIR/pages/gospider
+    gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap -R -o $SHARED_DIR/pages/gospider >/dev/null
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
     grep -Rih -Eo -- "http[^ ]+($domains)[^<\"' ]+" $SHARED_DIR/pages/gospider | sort -u > $SHARED_DIR/urls.gospider.txt
 
     xnLinkFinder -i $SHARED_DIR/pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
     grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > $SHARED_DIR/urls.xnlinkfinder.txt
-    sort -u $SHARED_DIR/urls.katana.txt $SHARED_DIR/urls.gospider.txt $SHARED_DIR/urls.xnlinkfinder.txt $SHARED_DIR/urls.passive.txt | grep -vE '/[a-z0-9]{40}\.txt' > $urlsFile
+
+    betterSort -u $SHARED_DIR/urls.*.txt | grep -vE '/[a-z0-9]{40}\.txt' > $urlsFile
     
     # CHECKING FOR BUCKETS
     # trufflehog s3 --bucket=bucket name
@@ -631,8 +632,7 @@ function contentDiscovery() {
 }
 
 function customVulnScanning() {
-    targetFile="${1:=$SHARED_DIR/web.filtered.txt}"
-    urlsFile="${2:=urls.all.txt}"
+    urlsFile="${1:=urls.all.txt}"
     
     # TODO: consider POST requests (coding something)
 
@@ -643,48 +643,45 @@ function customVulnScanning() {
     # - ?ci: commix
     # - https://github.com/topics/VULN
 
-    if [ ! -s $SHARED_DIR/endpoints.txt ]; then
-        echo "[*] Generating endpoints file..."
-        cat $urlsFile \
-        | grep -Eiv '[^=]+[.]js$|[.]js\?' \
-        | sed 's/%[A-Za-z0-9]\{2\}$//' \
-        | uro | sort -u > $TMP_PATH/endpoints.potential.txt
-        awk -F/ '{print $3}' $TMP_PATH/endpoints.potential.txt | sort -u | httpx -mc 200,201,202,203,204,205,206,207,208,301,302,307,308,400,401,403,404,405,406,410,411,412,415,423 -silent | awk -F/ '{print $3}' | sort -u > $TMP_PATH/domains.alive.txt
-        awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
-        echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
+    echo "[*] Generating endpoints file..."
+    cat $urlsFile \
+    | grep -Eiv '[^=]+[.]js$|[.]js\?' \
+    | sed 's/%[A-Za-z0-9]\{2\}$//' \
+    | uro | sort -u > $TMP_PATH/endpoints.potential.txt
+    awk -F/ '{print $3}' $TMP_PATH/endpoints.potential.txt | sort -u | httpx -mc 200,201,202,203,204,205,206,207,208,301,302,307,308,400,401,403,404,405,406,410,411,412,415,423 -silent | awk -F/ '{print $3}' | sort -u > $TMP_PATH/domains.alive.txt
+    awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
+    echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
 
-        # arjun - preparing targets
-        grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 | sort -u > $TMP_PATH/urls.with.parameters.txt
-        grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4|webm)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | sort -u > $TMP_PATH/urls.without.parameters.txt
-        # getting endpoints that dont have one single parameter discovered yet
-        awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.without.parameters.txt > $TMP_PATH/urls.potential.find.parameters.txt
+    # arjun - preparing targets
+    grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 | sort -u > $TMP_PATH/urls.with.parameters.txt
+    grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4|webm)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | sort -u > $TMP_PATH/urls.without.parameters.txt
+    # getting endpoints that dont have one single parameter discovered yet
+    awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.without.parameters.txt > $TMP_PATH/urls.potential.find.parameters.txt
 
-        # using just priority endpoints to speed up the process
-        grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|list|upload|export|import|sale|price|thank|message|download|file)' $TMP_PATH/urls.potential.find.parameters.txt > $TMP_PATH/urls.priority.find.parameters.txt
+    # using just priority endpoints to speed up the process
+    grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|list|upload|export|import|sale|price|thank|message|download|file)' $TMP_PATH/urls.potential.find.parameters.txt > $TMP_PATH/urls.priority.find.parameters.txt
 
-        # limiting max 50 urls per host
-        shuf $TMP_PATH/urls.priority.find.parameters.txt | awk '
-        {
-            url = $0
-            n = split(url, paths, "/")
-            host = paths[3]
-            counter[host]++
+    # limiting max 50 urls per host
+    shuf $TMP_PATH/urls.priority.find.parameters.txt | awk '
+    {
+        url = $0
+        n = split(url, paths, "/")
+        host = paths[3]
+        counter[host]++
 
-            if (counter[host] <= 50) {
-                print url
-            }
+        if (counter[host] <= 50) {
+            print url
+        }
 
-        }' | shuf -n 100 > $TMP_PATH/urls.final.find.parameters.txt
- 
-        echo "[*] Trying to find more parameters in $(wc -l < $TMP_PATH/urls.final.find.parameters.txt) endpoints..."
-        arjun -i $TMP_PATH/urls.final.find.parameters.txt --headers "User-Agent: $USER_AGENT" -oT $SHARED_DIR/arjun.txt
-        if [ -s $SHARED_DIR/arjun.txt ]; then
-            cat $SHARED_DIR/arjun.txt >> $TMP_PATH/endpoints.txt
-        fi
-        cp $TMP_PATH/endpoints.txt $SHARED_DIR/endpoints.txt
-    else
-        echo "[*] Using existing endpoints file!"
+    }' | shuf -n 100 > $TMP_PATH/urls.final.find.parameters.txt
+
+    echo "[*] Trying to find more parameters in $(wc -l < $TMP_PATH/urls.final.find.parameters.txt) endpoints..."
+    arjun -i $TMP_PATH/urls.final.find.parameters.txt --headers "User-Agent: $USER_AGENT" -oT $SHARED_DIR/arjun.txt
+    if [ -s $SHARED_DIR/arjun.txt ]; then
+        cat $SHARED_DIR/arjun.txt >> $TMP_PATH/endpoints.txt
     fi
+    cp $TMP_PATH/endpoints.txt $SHARED_DIR/endpoints.txt
+
 
     mkdir -p results/dast
 
@@ -999,4 +996,19 @@ function buildCustomWordlist() {
     }' | sed 's/^\///g' | sed 's/\/$//g' | sed '/^[;\^\&%]/d' | sort -u | shuf | head -n $CUSTOM_WORDLIST_PER_HOST_LIMIT > $TMP_PATH/wordlist.custom.2.txt
 
     cat $TMP_PATH/wordlist.custom.[0-9].txt | sed '/^.\{230,\}$/d' | sort -u > $customWordlistFile
+}
+
+function betterSort() {
+    local files=()
+    local flags=()
+    for arg in "$@"; do
+    if [[ "$arg" == -* ]]; then
+        flags+=("$arg")
+    elif [[ -e "$arg" ]]; then
+        files+=("$arg")
+    else
+        echo "sort: cannot open $arg: No such file or directory" >&2
+    fi
+    done
+    sort "${flags[@]}" <(cat "${files[@]}" 2>/dev/null)
 }
