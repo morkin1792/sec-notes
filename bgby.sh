@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 # TODO: add custom header option
-
+# TODO: ?POST + authenticated
 # TODO: look for more templates
 # TODO: look for similar projects (ex: NucleiFuzzer)
 # TODO: filter all stdout + log stderr
@@ -20,7 +20,6 @@ STOP=0
 function checkRequirements() {
     requiredCommands=(
         'shuf'              # coreutils
-        'whois'             # pacman -S whois || apt install whois
         'jq'                # pacman -S jq || apt install jq
         'yq'                # pacman -S yq || apt install yq
         'subfinder'         # go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
@@ -285,8 +284,8 @@ function passiveSubdomainDiscovery() {
             sleep 60
         fi
     done
-    grep '^*.' $SHARED_DIR/subdomains.passive/crt.txt | sed 's/^*.//' | sort -u > $SHARED_DIR/subdomains.passive/crt.tls.wildcard.txt
-    sed -i 's/^*.//' $SHARED_DIR/subdomains.passive/crt.txt
+    grep '^\*\.' $SHARED_DIR/subdomains.passive/crt.txt | sed 's/^\*\.//' | sort -u > $SHARED_DIR/subdomains.passive/crt.tls.wildcard.txt
+    sed -i 's/^\*\.//' $SHARED_DIR/subdomains.passive/crt.txt
 
     cat $TMP_PATH/github-subdomains.output.txt | grep https://github.com | awk '{ print $2}' | sort -u > github.urls.txt
     #TODO: add more github url finder tools (maybe search people using nodes) and repo analysis
@@ -295,8 +294,8 @@ function passiveSubdomainDiscovery() {
     mkdir -p $SHARED_DIR
     chaos -dL $domainsFile -o $SHARED_DIR/chaos.original.txt
     cp $SHARED_DIR/chaos.original.txt $SHARED_DIR/subdomains.passive/chaos.txt
-    grep '^*.' $SHARED_DIR/subdomains.passive/chaos.txt | sed 's/^*[.]//' | sort -u > $SHARED_DIR/subdomains.passive/chaos.tls.wildcard.txt
-    sed -i 's/^*[.]//' $SHARED_DIR/subdomains.passive/chaos.txt
+    grep '^\*\.' $SHARED_DIR/subdomains.passive/chaos.txt | sed 's/^\*\.//' | sort -u > $SHARED_DIR/subdomains.passive/chaos.tls.wildcard.txt
+    sed -i 's/^\*\.//' $SHARED_DIR/subdomains.passive/chaos.txt
 
     yq -y '.apikeys' "$CONFIG_FILE" > "$TMP_PATH/provider-config.yaml"
     chmod 600 "$TMP_PATH/provider-config.yaml"
@@ -543,7 +542,7 @@ function reconAnalysis() {
     jq -r '.url + "," + (.status_code|tostring) + "," + (.title//"") + "," + (.words|tostring) + "," + (.a|sort|tostring)' $SHARED_DIR/web.all.json | fixedSort | awk -F, '!seen[$2 FS $3 FS $4 FS $5]++ { print $1 }' | sed 's/[:]\(80\|443\)$//g' > $webFilteredFile
 
     # GETTING WEB SCREENSHOTS
-    mkdir -p gowitness; cd $_; gowitness scan file -f ../$webAllFile --write-db; cd ..
+    (mkdir -p gowitness && cd $_ && gowitness scan file -f "$webAllFile" --write-db)
 
     # GETTING SCANNABLE IP ADDRESSES
     awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' $hostsFile > $TMP_PATH/ips.txt
