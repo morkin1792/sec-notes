@@ -8,7 +8,7 @@
 
 CONFIG_FILE="$HOME/.bgby.yaml"
 TMP_PATH=$(mktemp -d --tmpdir=/var/tmp/ -t bgby_$(date +"%Y.%m.%d_%H:%M:%S")_XXXXXXXX)
-SHARED_DIR=".files"
+SHARED_DIR="$(pwd)/.files"
 
 
 if [ -z $ZSH_VERSION ]; then
@@ -16,7 +16,7 @@ if [ -z $ZSH_VERSION ]; then
     # you can comment the following line if you want to use another shell, but I will not support it :)
     exit 1
 fi
-
+STOP=0
 function checkRequirements() {
     requiredCommands=(
         'shuf'              # coreutils
@@ -56,12 +56,15 @@ function checkRequirements() {
         'nmap'              # pacman -S nmap || apt install nmap
     )
 
+    local missing=0
     for command in ${requiredCommands[@]}; do
-        if [ -z "$(which $command)" ] || [ ! -z "$(which $command | grep 'not found' )" ]; then
+        if ! command -v "$command" &>/dev/null; then
             printf "[-] $command is missing...\n"
-            return 2
+            missing=$((missing + 1))
+            STOP=1
         fi
     done
+    [ $missing -gt 0 ] && return 2
 }
 
 function checkConfigFile() {
@@ -141,9 +144,13 @@ apikeys:
         echo "[*] Created config file: $file"
     fi
     # loading variables
-    while read -r var; do
-        eval $var
-    done < <(yq '.variables' "$file" -j -M --indent 0 | tail +2 | head -n -1 | sed 's/^"/export /g' | sed 's/": /=/g' | sed 's/,$//g')
+    while IFS='=' read -r key value; do
+        [ -z "$key" ] && continue
+        # strip surrounding quotes from value
+        value="${value#\"}"
+        value="${value%\"}"
+        typeset -g "$key=$value"
+    done < <(yq '.variables' "$file" -j -M --indent 0 | tail +2 | head -n -1 | sed 's/^"//' | sed 's/": /=/' | sed 's/,$//')
 
     # setting default values if not defined
     if [ -z "$USER_AGENT" ]; then
@@ -169,9 +176,12 @@ apikeys:
     done
 }
 checkRequirements
-checkConfigFile
+if [ $STOP -eq 0 ]; then
+    checkConfigFile
+    echo Using $TMP_PATH as temporary directory
+    echo Using $SHARED_DIR to share files between functions
+fi
 
-echo Using $TMP_PATH as temporary space
 
 
 local welcomeMsg="
@@ -195,7 +205,9 @@ FUNCTIONS:
         2) Run: webMode web.scope.txt
         3) Check all files in the current directory and, MAINLY, results folder. 
 "
-printf "%s\n" "$welcomeMsg"
+if [ $STOP -eq 0 ]; then
+    printf "%s\n" "$welcomeMsg"
+fi
 
 function fullMode() {
     domainsFile="${1:=scope.txt}"
@@ -587,11 +599,14 @@ function spidering() {
         cat $TMP_PATH/passwords/* | sort -u > $TMP_PATH/secrets.txt
     ) fi
     
+    export AWS_REGION=us-east-1
+    export AWS_DEFAULT_REGION=us-east-1
     while read -r jwt; do
         [ -z "$jwt" ] && continue
-        export AWS_REGION=us-east-1
-        export AWS_DEFAULT_REGION=us-east-1
-        (aws cognito-idp get-user --access-token $jwt 2>&1 | grep -q 'Invalid Access Token') || echo $jwt >> results/jwts.cognito.txt
+        # pre-filter: only test JWTs whose payload contains a cognito-idp issuer
+        local payload=$(echo "$jwt" | cut -d'.' -f2 | tr '_-' '/+' | base64 -d 2>/dev/null)
+        echo "$payload" | grep -q 'cognito-idp' || continue
+        (aws cognito-idp get-user --access-token "$jwt" 2>&1 | grep -q 'Invalid Access Token') || echo "$jwt" >> results/jwts.cognito.txt
     done < results/jwts.txt
     hashcat -m 16500 results/jwts.txt $TMP_PATH/secrets.txt -o results/jwts.cracked.txt
     #hashcat results/jwts.txt --show
