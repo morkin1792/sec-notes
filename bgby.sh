@@ -336,7 +336,7 @@ json = false
     mkdir -p $SHARED_DIR/pages/waymore
     waymore -i $domainsFile -lcc 1 -mode B -oU $TMP_PATH/waymore.output.urls -oR $SHARED_DIR/pages/waymore
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
-    grep -Eih "[^/:>\"\`( =@]*($domains)[^><)\`\" ;,\!]*" -Ro $SHARED_DIR/pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
+    grep -Eih "[^/:>\"'\`( =@]*($domains)[^><)\`\"' ;,\!]*" -Ro $SHARED_DIR/pages | tr '[:upper:]' '[:lower:]' | sed 's/\\//g' | sed "s/'.\?$//g" | sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' | sed 's/[:]\(80\|443\)$//g' | sed 's/\/$//g' | sort -u | sed 's/^/https:\/\//' > $TMP_PATH/waymore.manual.urls
     betterSort -u $TMP_PATH/gau.output.txt $TMP_PATH/waymore.output.urls $TMP_PATH/waymore.manual.urls > $SHARED_DIR/urls.passive.txt
     # extracting subdomains from urls
     cat $SHARED_DIR/urls.passive.txt | awk -F/ '{print $3}' | sed 's/:[0-9]\+$//' | sed 's/^[.]*//' | sed 's/^\(%[0-9][0-9]\)*//' | sed 's/\?.*//' | sort -u > $SHARED_DIR/subdomains.passive/gau_waymore.txt
@@ -566,7 +566,7 @@ function spidering() {
     
     gospider -S $webFilteredFile -u web -d 3 --js --subs --sitemap -R -o $SHARED_DIR/pages/gospider >/dev/null
     domains="$(cat $domainsFile | sed '/^$/d' | tr '\n' '|' | sed 's/\./\\./g' | sed 's/|$//')"
-    grep -Rih -Eo -- "http[^ ]+($domains)[^<\"' ]+" $SHARED_DIR/pages/gospider | sort -u > $SHARED_DIR/urls.gospider.txt
+    grep -Rih -Eo -- "http[^\`'\" ]+($domains)[^<\"'\` ]+" $SHARED_DIR/pages/gospider | sort -u > $SHARED_DIR/urls.gospider.txt
 
     xnLinkFinder -i $SHARED_DIR/pages -sf $domainsFile -o $TMP_PATH/xnlinkfinder.txt
     grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > $SHARED_DIR/urls.xnlinkfinder.txt
