@@ -4,11 +4,12 @@
 - subvert business rules
 - change Host
 - try change http methods
-    - manual common way
-    - _method=PUT
-    - X-HTTP-Method-Override: PUT
-    - X-Method-Override: PUT
-    - X-Http-Method: PUT
+    - traditional way
+    - param `_method=PUT`
+    - header `X-HTTP-Method-Override: PUT`
+    - header `X-Method-Override: PUT`
+    - header `X-Http-Method: PUT`
+    - header `Method: PUT`
 - understand how route is defined
     - add / at end of the path
     - check web cache deception
