@@ -68,7 +68,7 @@ function installCertViaRecovery() {
     convertCert "$CERT"
     if (adb shell whoami | grep root >/dev/null 2>&1); then 
         if (adb shell ls -lah /system/etc/security 2>&1 | grep -qi 'no such'); then
-            echo "Using the Recovery, mount the partition System, then try again."
+            echo "[*] Search an option to mount the partition System, then try again."
          else
             adb shell '
                 mv /data/local/tmp/*.0 /system/etc/security/cacerts/
