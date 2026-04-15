@@ -17,12 +17,10 @@
 - usb storage `/var/mobile/Media`
 - app `/var/containers/Bundle/Application`
 - configs `/var/mobile/Containers/Data/Application/`
-- generating ipa: `mkdir Payload && cp -r YourApp.app Payload/ && zip -r MyApp.ipa Payload`
 - installing ipa:
-   * 1) Unpack the ipa
-     2) Copy the folder inside Payload (<AppName>.app)
-     3) Paste it in /var/jb/Applications/
-     4) Run ```uicache -ar``` in an ios terminal
+   - Copy ipa to "On My iPhone": `/rootfs/private/var/mobile/Containers/Shared/AppGroup/{UUID}/File Provider Storage/`
+   - Install via TrollStore
+- generating ipa: `mkdir Payload && cp -r YourApp.app Payload/ && zip -r MyApp.ipa Payload`
 - https://cobalt.io/blog/ios-pentesting-101
 
 ## reversing flutter apps 
