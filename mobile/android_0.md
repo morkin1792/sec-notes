@@ -10,49 +10,52 @@ Choose one of the options below:
     * If there is AP isolation in the WiFi network, connect the device via adb and run: `adb reverse tcp:8080 tcp:8080`. Then, consider that the proxy address is `127.0.0.1` and port `8080`.
 
 - B) Network Level (firewall + transparent Proxy)
-     - 1) Set the computer's firewall to redirect the device's traffic to a transparent proxy. If you are using linux:
-         ```sh
-         export deviceAddr="192.168..."
-         iptables -A INPUT -p udp --source $deviceAddr --dport 53 -j ACCEPT
-         iptables -A INPUT -p tcp --source $deviceAddr --dport 8080 -j ACCEPT
-         iptables -t nat -A PREROUTING -p tcp --source $deviceAddr -j REDIRECT --to-ports 8080
-         ``` 
-     - 2) Choose one of the options below:
+    - 1) Choose one of the options below:
         * A) Create an AP on your computer and connect the Android.
-        * B) Use your regular WiFi router (assuming there is no AP isolation and the app does not need ipv6) 
-            - In your Android device: Go to Settings > WiFi, select the option to edit your wifi network. Then, fill the current ip address of the computer that is running the proxy as the gateway and the DNS server. Also define a different ip address for you android device.
-            - Search for "How to enable ip forwarding" in your system. If you are using linux:
+        * B) Connect your device and your pc in the same router (assuming there is no AP isolation and the app does not need ipv6) 
+            - In your mobile device: Go to your current wifi network settings and edit its IP settings. Choose Manual/Static IPv4. Define an ip address for your device from the same range your pc have. And put the ip address of the pc (that is running the proxy) as the gateway and the DNS server.
+            - Search "How to enable ip forwarding" in your system. If you are using linux:
                 * `sudo sysctl -w net.ipv4.ip_forward=1`
                 * For persistence, check `man 5 sysctl.d`
             - Start a DNS server ignoring ipv6. If you are using linux:
             ```sh
-            echo '
-            no-resolv
-            log-queries
-            server=/*/8.8.8.8
-
-            # ignoring ipv6
-            address=/*/::
-
-            listen-address=0.0.0.0
-            bind-interfaces
-            ' > ~/dnsmasq.conf
-            sudo dnsmasq -C ~/dnsmasq.conf --no-daemon
+            function startDnsServer() {
+               echo '
+               no-resolv
+               log-queries
+               server=/*/8.8.8.8
+   
+               # ignoring ipv6
+               address=/*/::
+   
+               listen-address=0.0.0.0
+               bind-interfaces
+               ' > /tmp/dnsmasq.conf
+               sudo dnsmasq -C /tmp/dnsmasq.conf --no-daemon
+            }
+            startDnsServer
             ```
+    - 2) Set the pc's firewall to redirect the device's traffic to your transparent proxy (and allow querying the dns server). If you are using linux:
+         ```sh
+         export deviceAddr="192.168..."
+         export proxyPort="8080"
+         iptables -A INPUT -p udp --source $deviceAddr --dport 53 -j ACCEPT
+         iptables -A INPUT -p tcp --source $deviceAddr --dport $proxyPort -j ACCEPT
+         iptables -t nat -A PREROUTING -p tcp --source $deviceAddr -j REDIRECT --to-ports $proxyPort
+         ```
+    - 3) If you are using Burp Suite, go to Proxy Settings, add or edit a proxy listener, and enable invisible proxy inside Request handling tab. 
+ 
 
 ## Installing CA certificate
 * 1) Get the certificate file (http://burp, http://mitm.it, …)
-* 2) Install the certificate as a:
-    - A) **User Certificate** (via Settings / File Manager). 
-        - Problematic since Android 7 (https://android-developers.googleblog.com/2016/07/changes-to-trusted-certificate.html). You will need:
-            - A) Use a magisk/zygisk module (check System Certificate installation) 
-            - B) **[No requires root]** Recompile the app modifying it to trust in User certificates: https://github.com/shroudedcode/apk-mitm
-            - C) Hook the config to trust in user certs: https://medium.com/keylogged/bypassing-androids-network-security-configuration-575819a8f317
-            - D) Use a very old Android version
-    - B) **System Certificate**
-        - A) Install a Magisk/Zygisk Module to make user certs be installed as System certs (https://github.com/NVISOsecurity/AlwaysTrustUserCerts), and then just install them as user certs (via settings/file manager).
-        - B) Via a custom recovery (such as TWRP)
-            - **[No requires root directly on Android]** Use the adb in recovery to have root file system access. Then install it:
+* 2) Install the certificate
+
+### A) Installing as System certificate
+- A) Install a Magisk/Zygisk Module to do user certs be installed as System certs, and then just install them as user certs (via settings/file manager).
+    * https://github.com/NVISOsecurity/AlwaysTrustUserCerts (⚠️ this module may not work for [flutter apps](https://github.com/NVISOsecurity/AlwaysTrustUserCerts/issues/44) and may not work when used together with [another modules](https://github.com/NVISOsecurity/AlwaysTrustUserCerts/issues/46) )
+    * https://github.com/lupohan44/TrustUserCertificates (⚠️ this module may be deprecated)
+- B) Via a custom recovery (such as TWRP)
+    - **[No requires root directly on Android]** Use the adb in recovery to have root file system access. Then install it:
 ```bash
 function installCertViaRecovery() {
     CERT="${1:?Provide a certificate file (cert.der) as an argument}"
@@ -84,8 +87,15 @@ function installCertViaRecovery() {
 }
 ```
 
+### B) Installing as User certificate (via Settings / File Manager)
+- Problematic since Android 7 (https://android-developers.googleblog.com/2016/07/changes-to-trusted-certificate.html). You will need:
+   - A) Use a magisk/zygisk module (see [#a-installing-as-system-certificate](#a-installing-as-system-certificate))
+   - B) **[No requires root]** Recompile the app modifying it to trust in User certificates: https://github.com/shroudedcode/apk-mitm
+   - C) Hook the config to trust in user certs (https://medium.com/keylogged/bypassing-androids-network-security-configuration-575819a8f317, https://github.com/httptoolkit/frida-interception-and-unpinning)
+   - D) Use a very old Android version
+
 ## Bypassing root detection
-- Can you use a **non-rooted device**, installing the CA certificate without root as detailed above?
+- Can you use a **non-rooted device**, installing the CA certificate via Recovery (as explained in [#a-installing-as-system-certificate](#a-installing-as-system-certificate))?
     - If the app implements certificate pinning:
         - https://github.com/mitmproxy/android-unpinner
         - Frida without root
