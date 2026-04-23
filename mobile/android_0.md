@@ -44,7 +44,7 @@ Choose one of the options below:
          iptables -t nat -A PREROUTING -p tcp --source $deviceAddr -j REDIRECT --to-ports $proxyPort
          ```
     - 3) If you are using Burp Suite, go to Proxy Settings, add or edit a proxy listener, and enable invisible proxy inside Request handling tab. 
- 
+- C) Android builtin proxy system (some apps ignore it, such as the ones made in Flutter): `adb shell settings put global http_proxy 127.0.0.1:8080`
 
 ## Installing CA certificate
 * 1) Get the certificate file (http://burp, http://mitm.it, …)
