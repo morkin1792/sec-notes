@@ -17,9 +17,9 @@
 - usb storage `/var/mobile/Media`
 - app `/var/containers/Bundle/Application`
 - configs `/var/mobile/Containers/Data/Application/`
-- installing ipa:
-   - Copy ipa to "On My iPhone": `/rootfs/private/var/mobile/Containers/Shared/AppGroup/{UUID}/File Provider Storage/`
-   - Install via TrollStore
+- installing ipa
+   - option A: https://github.com/claration/Impactor
+   - option B: Copy ipa to "On My iPhone": `/rootfs/private/var/mobile/Containers/Shared/AppGroup/{UUID}/File Provider Storage/`, then install via TrollStore
 - generating ipa: `mkdir Payload && cp -r YourApp.app Payload/ && zip -r MyApp.ipa Payload`
 - https://cobalt.io/blog/ios-pentesting-101
 
