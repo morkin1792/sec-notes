@@ -1,5 +1,5 @@
 # Android Application Pentesting - Part 0 (Setup)
-Some tricks to use when testing Android Apps
+Some tricks to use when you are testing Android Apps
 
 ## Setting proxy
 
@@ -8,8 +8,8 @@ Choose one of the options below:
 - A) **[🥇Recommended]** "Rethink VPN" app (available on Google Play, or also https://github.com/celzero/rethink-app)
     * Change DNS settings to "System DNS", Add a HTTP(S) CONNECT proxy, and start the "VPN".
     * If there is AP isolation in the WiFi network, connect the device via adb and run: `adb reverse tcp:8080 tcp:8080`. Then, consider that the proxy address is `127.0.0.1` and port `8080`.
-
-- B) Network Level (firewall + transparent Proxy)
+- B) Android builtin proxy system (some apps ignore it, such as the ones made in Flutter): `adb shell settings put global http_proxy 127.0.0.1:8080`
+- C) Network Level (firewall + transparent Proxy)
     - 1) Choose one of the options below:
         * A) Create an AP on your computer and connect the Android.
         * B) Connect your device and your pc in the same router (assuming there is no AP isolation and the app does not need ipv6) 
@@ -44,7 +44,6 @@ Choose one of the options below:
          iptables -t nat -A PREROUTING -p tcp --source $deviceAddr -j REDIRECT --to-ports $proxyPort
          ```
     - 3) If you are using Burp Suite, go to Proxy Settings, add or edit a proxy listener, and enable invisible proxy inside Request handling tab. 
-- C) Android builtin proxy system (some apps ignore it, such as the ones made in Flutter): `adb shell settings put global http_proxy 127.0.0.1:8080`
 
 ## Installing CA certificate
 * 1) Get the certificate file (http://burp, http://mitm.it, …)
@@ -140,3 +139,21 @@ function installCertViaRecovery() {
     * You can let frida server running as daemon (`frida-server -D`) and connect via network
     * Use termux (you can install ssh server and/or frida client)
 - Manual analysis
+
+## Debugging Setup
+0) Do **NOT** take into account the reaction of ANY browsers apps ⚠️. They may trust on user certificates, and do not trust on system certificates.
+1) First of all, make sure your target app is working without any proxying.
+2) At least temporarily, avoid ANY network issues (firewall, ap isolation, etc.) by using adb for creating a reverse socket connection between your computer and the device: `adb reverse tcp:PORT tcp:PORT`. 
+3) Use an ALL-your-traffic routing solution (rethink, (ap||dns||vpn)+iptables, ...) to make sure everything is going to http://127.0.0.1:$PORT. See [#setting-proxy](#setting-proxy).
+4) Install Termux (via [google play](https://play.google.com/store/apps/details?id=com.termux) or [github](https://github.com/termux/termux-app)), and then run: `curl -v duck.com`
+   - If curl `did NOT work`, read its error logs, make sure adb reverse is still there, and the ports are right.
+   - If curl `worked` but the request was `NOT captured` by the proxy, you are not routing all your device traffic.
+   - If curl `worked` and the request was `captured` by the proxy, everything fine. Go to next step.
+5) Install an app that, for sure, **does NOT have certificate pinning**, such as [https://github.com/httptoolkit/android-ssl-pinning-demo](https://github.com/httptoolkit/android-ssl-pinning-demo).
+6) Perform an NOT pinned HTTPS request. If you are using **android-ssl-pinning-demo**, just press the first button ("unpinned request"):
+    - If the request was `NOT captured` by the proxy, your proxy **CA certificate** is not being recognized. See [#installing-ca-certificate](#installing-ca-certificate).
+    - Otherwise, **your setup is working fine**.
+7) If whenever you open your target app while proxying the traffic, the internet connection is still **failing**, it is highly **probably** a **certificate pinning** issue. See [pinning](pinning.md).
+
+
+
