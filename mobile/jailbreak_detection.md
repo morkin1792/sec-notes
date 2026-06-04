@@ -1,4 +1,6 @@
 ## bypassing jailbreak detection
+### hidden jailbreak
+- https://github.com/roothide/Dopamine2-roothide
 
 ### tweaks
 - https://ios.cfw.guide/blocking-jailbreak-detection
