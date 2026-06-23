@@ -24,15 +24,18 @@
 - [information gathering](external.md#searching-for-assets)
 - check target in web archive
 
-#### gathering users, emails, cpfs
-- search engine "@company"
-- theHarvester
-- websites
+#### gathering users
+- search for "@company"
+- ~~theHarvester~~
+- emails
     - https://websets.exa.ai/websets/
     - hunter.io
-    - www.skymem.info
-    - phonebook.cz
-- look for passwords / hashes in leaked databases 
+    - skymem.info
+    - [now paid] phonebook.cz
+- users || passwords
+    - https://app.osintleak.com/dashboard/search?q=
+    - https://app.dehashed.com/search
+    - https://members.leakradar.io/en/search/domain/example.com
 - [jbr_query.sh](jbr_query.sh)
 
 ### automated scan
