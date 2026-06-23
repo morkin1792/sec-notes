@@ -17,7 +17,7 @@ site:t.me "TARGET"
 ```
 - ?authenticated in pastebin
 - ?jira
-- ?leaks
+- [creds in leaks](web.md#gathering-users)
 
 #### searching for github users
 ```
@@ -173,8 +173,7 @@ cat github.json | jq 'select (
 * bing ip:"1.1.1.1"
 
 ## MS365 
-- [gather emails](web.md#gathering-users-emails-cpfs)
-- password leaks: dehashed, scylla.so, breachdirectory.org, HIBP, pastebin, google
+- [gather users and passwords](web.md#gathering-users)
 - user enumeration (0,5,6 indicate the user is valid)
 ```http
 POST /common/GetCredentialType?mkt=en HTTP/1.1
