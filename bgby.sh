@@ -48,8 +48,8 @@ function checkRequirements() {
         'waymore'           # pip install waymore
         'gf'                # go install -v github.com/tomnomnom/gf@latest && git clone https://github.com/1ndianl33t/Gf-Patterns ~/.gf
         'uro'               # pipx install uro
-        'arjun'             # pipx install arjun
         'flatsqli'          # go install github.com/morkin1792/flatsqli@latest
+        'aiza-key-analyzer' # go install github.com/morkin1792/aiza-key-analyzer@latest
         # 'dalfox'            # go install github.com/hahwul/dalfox/v2@latest
         'naabu'             # go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest (&& apt install -y libpcap-dev)
         'nmap'              # pacman -S nmap || apt install nmap
@@ -544,6 +544,11 @@ function reconAnalysis() {
     # GETTING WEB SCREENSHOTS
     (mkdir -p gowitness && cd $_ && gowitness scan file -f "$webAllFile" --write-db)
 
+    # legacy/outdated web apps for manual checking
+    jq -r '[.url,(.webserver//"-"),((.tech//[])|join(";")),(.title//"-")]|@tsv' $SHARED_DIR/web.all.json 2>/dev/null \
+    | grep -iE 'Apache/(1\.|2\.[0-2]\.)|nginx/(0\.|1\.[0-3]\.)|Microsoft-IIS/[1-7]([.]|$)|PHP[:/][45]\.|Tomcat/[0-6]([.]|$)|OpenSSL/0|ColdFusion|Apache Struts|FrontPage|Silverlight|Adobe Flash|Default (Page|Web Site)|Apache2 (Debian|Ubuntu) Default Page|Welcome to nginx|IIS Windows( Server)? - Welcome|Test Page for|Index of /|phpMyAdmin|Tomcat Manager|Plesk|Webmin' \
+    | sort -u > interesting.legacy.apps.txt
+
     # GETTING SCANNABLE IP ADDRESSES
     awk -F, '$5 !~ /(cdn|waf)/ { print $3 }' $hostsFile > $TMP_PATH/ips.txt
     if [ -s $rangesFile ]; then
@@ -572,6 +577,9 @@ function spidering() {
     grep -E '^https?://' $TMP_PATH/xnlinkfinder.txt > $SHARED_DIR/urls.xnlinkfinder.txt
 
     betterSort -u $SHARED_DIR/urls.*.txt | grep -vE '/[a-z0-9]{40}\.txt' > $urlsFile
+
+    # Interesting endpoints for manual checking
+    grep -iE '/(admin|wp-admin|administrator|manage|console|login|signin|sso|oauth|saml|auth|register|password|reset|api|v[0-9]+|graphql|rest|rpc|upload|import|export|download|backup|debug|actuator|phpinfo|server-status|swagger|openapi|api-docs|redoc)([/?]|$)|/\.(git|svn|env|htaccess|DS_Store)|\.(sql|bak|zip|tar|gz|log|old|swp)([?]|$)' $urlsFile | sort -u > interesting.endpoints.txt
     
     # CHECKING FOR BUCKETS
     # trufflehog s3 --bucket=bucket name
@@ -615,7 +623,12 @@ function spidering() {
     grep -vE '^(generic-api-key|aws-access-token|jwt|gcp-api-key)' results/secrets.gitleaks.complete.csv > results/secrets.gitleaks.filtered.csv
     trufflehog filesystem $SHARED_DIR/pages --json > results/secrets.truffle.complete.json
     cat results/secrets.truffle.complete.json | jq 'select (.DetectorName != "PrivateKey" and .DetectorName != "Box" and .DetectorName != "Urlscan")' > results/secrets.truffle.filtered.json
-    # grep -Ei -oh 'AIza[A-Za-z0-9_-]{35}' results/secrets.truffle.complete.json results/secrets.gitleaks.complete.csv | sort -u | aiza-scanner
+    grep -Eoha 'AIza[0-9A-Za-z_-]{35}' results/secrets.gitleaks.complete.csv results/secrets.truffle.complete.json 2>/dev/null | sort -u > results/aiza.keys.txt
+    if [ -s results/aiza.keys.txt ]; then
+        aiza-key-analyzer -f results/aiza.keys.txt -o results/aiza.analysis.md
+    else
+        rm -f results/aiza.keys.txt
+    fi
 }
 
 function contentDiscovery() {
@@ -666,34 +679,6 @@ function customVulnScanning() {
     awk -F/ 'NR==FNR { hosts[$0]; next } { split($0, a, "/"); if (a[3] in hosts) print $0 }' $TMP_PATH/domains.alive.txt <(sed 's/[:]\(80\|443\)\(\/\|\?\)/\2/g' $TMP_PATH/endpoints.potential.txt) > $TMP_PATH/endpoints.txt
     echo "[*] Total unique endpoints to analyze: $(wc -l < $TMP_PATH/endpoints.txt)"
 
-    # arjun - preparing targets
-    grep '?' $TMP_PATH/endpoints.txt | cut -d'?' -f1 | sort -u > $TMP_PATH/urls.with.parameters.txt
-    grep -v '?' $TMP_PATH/endpoints.txt | grep -vE '\.(pdf|doc|xml|json|swf|txt|zip|mp3|mp4|webm)$' | awk -F/ '$4 != "/" && $4 != "" {print $0}' | sort -u > $TMP_PATH/urls.without.parameters.txt
-    # getting endpoints that dont have one single parameter discovered yet
-    awk 'NR==FNR { keys[$0]; next } !($0 in keys)' $TMP_PATH/urls.with.parameters.txt $TMP_PATH/urls.without.parameters.txt > $TMP_PATH/urls.potential.find.parameters.txt
-
-    # using just priority endpoints to speed up the process
-    grep -iE '(api|v[0-9]+|graphql|search|query|login|auth|user|admin|dashboard|list|upload|export|import|sale|price|thank|message|download|file)' $TMP_PATH/urls.potential.find.parameters.txt > $TMP_PATH/urls.priority.find.parameters.txt
-
-    # limiting max 50 urls per host
-    shuf $TMP_PATH/urls.priority.find.parameters.txt | awk '
-    {
-        url = $0
-        n = split(url, paths, "/")
-        host = paths[3]
-        counter[host]++
-
-        if (counter[host] <= 50) {
-            print url
-        }
-
-    }' | shuf -n 100 > $TMP_PATH/urls.final.find.parameters.txt
-
-    echo "[*] Trying to find more parameters in $(wc -l < $TMP_PATH/urls.final.find.parameters.txt) endpoints..."
-    arjun -i $TMP_PATH/urls.final.find.parameters.txt --headers "User-Agent: $USER_AGENT" -oT $SHARED_DIR/arjun.txt
-    if [ -s $SHARED_DIR/arjun.txt ]; then
-        cat $SHARED_DIR/arjun.txt >> $TMP_PATH/endpoints.txt
-    fi
     cp $TMP_PATH/endpoints.txt $SHARED_DIR/endpoints.txt
 
 
@@ -705,7 +690,7 @@ function customVulnScanning() {
 
     cat $SHARED_DIR/endpoints.txt \
     | gf sqli \
-    | nuclei -dast -tags sqli -H "User-Agent: $USER_AGENT" -silent -o results/dast/sqli_potential.txt
+    | nuclei -dast -tags sqli -H "User-Agent: $USER_AGENT" -silent -o results/dast/sqli.potential.txt
     
     # Reflected XSS
     grep '\?' $SHARED_DIR/endpoints.txt \
