@@ -21,7 +21,7 @@
    - usb storage `/var/mobile/Media`
    - app `/var/containers/Bundle/Application`
    - configs `/var/mobile/Containers/Data/Application/`
-
+- sharing screen https://github.com/FDH2/UxPlay
 
 ## frida
 ### frida frameworks
